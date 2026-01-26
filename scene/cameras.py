@@ -15,8 +15,8 @@ import numpy as np
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 
 class Camera(nn.Module):
-    def __init__(self, idx, R, T, FoVx, FoVy, image, prior, depth, mask, gt_alpha_mask,
-                 image_name, uid,
+    def __init__(self, idx, R, T, FoVx, FoVy, image, depth, 
+                 image_name, uid, mask=None, gt_alpha_mask=None,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, 
                  data_device = "cuda", time = 0, illu_type=None, 
                  Znear=None, Zfar=None, reference=None
@@ -29,7 +29,6 @@ class Camera(nn.Module):
         self.T = T
         self.FoVx = FoVx
         self.FoVy = FoVy
-        self.prior = prior
         self.image_name = image_name
         self.time = time
         self.illu_type = illu_type

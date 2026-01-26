@@ -141,7 +141,7 @@ class EndoNeRF_Dataset(object):
             if depth.ndim == 3:
                 depth = depth[0]
 
-            depth = torch.from_numpy(depth)
+            depth = torch.from_numpy(depth).float()
             mask = self.transform(mask).bool()
             # color
             color = np.array(Image.open(self.image_paths[idx]))/255.0
@@ -211,7 +211,7 @@ class EndoNeRF_Dataset(object):
         return pts_wld
     
     def get_color_depth_mask(self, idx, mode):
-        depth = np.load(self.depth_paths[idx])
+        depth = np.load(self.depth_paths[idx]).float()
         if depth.ndim == 3:
             depth = depth[0]
         if 'stereomis' in self.root_dir:
@@ -255,7 +255,7 @@ class C3VD_Dataset(object):
         datadir,
         downsample=1.0,
         test_every=8,
-        mode='binocular'
+        mode='monocular'
     ):
         
         self.image_height = 540 
@@ -348,7 +348,6 @@ class C3VD_Dataset(object):
         
     def format_infos(self, split):
         cameras = []
-        
         if split == 'train': idxs = self.train_idxs
         elif split == 'test': idxs = self.test_idxs
         else:
@@ -357,22 +356,25 @@ class C3VD_Dataset(object):
         count = 0
         for idx in tqdm(idxs):
             depth_path = self.depth_paths[idx]
-            depth = cv2.imread(depth_path, -1)/self.png_depth_scale
-            depth = torch.from_numpy(depth)
+            try:
+                depth = cv2.imread(depth_path, -1)/self.png_depth_scale
+            except:
+                depth = np.load(depth_path)
+            depth = torch.from_numpy(depth).float()
             # color
             color = np.array(Image.open(self.image_paths[idx]))/255.0
             # color_adjusted = np.array(Image.open(self.image_paths[idx].replace('images_mix', 'images_mix_adjusted')))/255.0
             # color_adjusted = np.array(Image.open('/home/lastbasket/code/llgs/Endo-4DGX/refined/data/C3VD/cecum_t1_b/color_adjusted/0000_color_adjusted.png'))/255.0
-            color_adjusted = np.array(Image.open(self.image_paths[idx].replace('color', 'color_adjusted')))/255.0
+            #color_adjusted = np.array(Image.open(self.image_paths[idx].replace('color', 'color_adjusted')))/255.0
             
-            illu_type = 'low_light' if color_adjusted.mean()>color.mean() else 'over_exposure'
+            #illu_type = 'low_light' if color_adjusted.mean()>color.mean() else 'over_exposure'
             
-            mask = np.ones_like(depth)
-            mask = self.transform(mask).bool()
+            # mask = np.ones_like(depth)
+            # mask = self.transform(mask).bool()
             
-            image = self.transform(color)
+            image = self.transform(color).float()
             # times
-            time = self.image_times[idx]
+            time = torch.tensor(self.image_times[idx]).float().cuda()
             # poses
             R, T = self.image_poses[idx]
             # fov
@@ -381,13 +383,13 @@ class C3VD_Dataset(object):
 
             if split == 'train':
                 self.embedding_info[idx] = {'train_count':count, \
-                    'illu_type':illu_type, \
+                    #'illu_type':illu_type, \
                         'file_name':self.image_paths[idx]}
             
-            cameras.append(Camera(idx=count,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image, prior=color_adjusted, \
-                            depth=depth, mask=mask, gt_alpha_mask=None,
-                          image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time,illu_type=illu_type,
-                          Znear=None, Zfar=None))
+            cameras.append(Camera(idx=count,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image,  #prior=color_adjusted, \
+                            depth=depth, gt_alpha_mask=None, mask=None,
+                          image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time, #,illu_type=illu_type,
+                          ))
             count += 1
         return cameras
     
@@ -414,10 +416,47 @@ class C3VD_Dataset(object):
             pts, colors = pts_total[sel_idxs], colors_total[sel_idxs]
             normals = np.zeros((pts.shape[0], 3))
         elif self.mode == 'monocular':
-            color, depth, mask = self.get_color_depth_mask(0, mode=self.mode)
-            pts, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
-            pts = self.get_pts_wld(pts, self.image_poses[0])
-            normals = np.zeros((pts.shape[0], 3))
+            if True:
+                color, depth, mask = self.get_color_depth_mask(0, mode=self.mode)
+                pts, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
+                pts = self.get_pts_wld(pts, self.image_poses[0])
+                normals = np.zeros((pts.shape[0], 3))
+            if False:
+                pts_accum = []
+                colors_accum = []
+                for idx in self.train_idxs:
+                    if idx in (0, 67, 214):
+                        continue
+                    color, depth, mask = self.get_color_depth_mask(idx, mode=self.mode)
+                    pts_cam, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
+                    pts_wld = self.get_pts_wld(pts_cam, self.image_poses[idx])
+                    if pts_wld.size == 0:
+                        continue
+                    pts_accum.append(pts_wld)
+                    colors_accum.append(colors)
+
+                if len(pts_accum) == 0:
+                    return np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3))
+
+                pts_all = np.concatenate(pts_accum, axis=0)
+                colors_all = np.concatenate(colors_accum, axis=0)
+
+                # build Open3D point cloud and clean / downsample
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(pts_all)
+                pcd.colors = o3d.utility.Vector3dVector(colors_all)
+
+                # voxel downsample + remove outliers
+                voxel_size = 0.005  # adjust to scene scale (meters). Tune for your data.
+                pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+                pcd, ind = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+
+                # estimate normals for later use
+                pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 4, max_nn=30))
+
+                pts = np.asarray(pcd.points).astype(np.float32)
+                colors = np.asarray(pcd.colors).astype(np.float32)
+                normals = np.asarray(pcd.normals).astype(np.float32)
         
         return pts, colors, normals
         
@@ -433,7 +472,10 @@ class C3VD_Dataset(object):
         return pts_wld
     
     def get_color_depth_mask(self, idx, mode):
-        depth = cv2.imread(self.depth_paths[idx], -1)/self.png_depth_scale
+        try:
+            depth = cv2.imread(self.depth_paths[idx], -1)/self.png_depth_scale
+        except:
+            depth = np.load(self.depth_paths[idx])
         
         color = np.array(Image.open(self.image_paths[idx]))/255.0
         mask = np.ones_like(depth)
@@ -447,7 +489,6 @@ class C3VD_Dataset(object):
         Z = depth
         X, Y = X_Z * Z, Y_Z * Z
         pts_cam = np.stack((X, Y, Z), axis=-1).reshape(-1, 3)
-        print(pts_cam.shape)
         color = color.reshape(-1, 3)
         
         if not disable_mask:
@@ -621,7 +662,7 @@ class SCARED_Dataset(object):
             mask = self.transform(mask).bool()
             depth = self.depths[idx]
             depth = torch.from_numpy(depth)
-            time = self.times[idx]
+            time = torch.tensor(self.times[idx]).float().cuda()
             c2w = self.pose_mat[idx]
             w2c = np.linalg.inv(c2w)
             R, T = w2c[:3, :3], w2c[:3, -1]

@@ -109,7 +109,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
-        image = PILtoTorch(image,None)
+        image = PILtoTorch(image,None).float()
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height,
                               time = 0)
@@ -275,7 +275,7 @@ def readScaredInfo(datadir, mode, init_pts):
 
     return scene_info
 
-def readC3VDInfo(datadir, mode):
+def readC3VDInfo(datadir, mode='monocular'):
     # load camera infos
     from scene.endo_loader import C3VD_Dataset
     endo_dataset = C3VD_Dataset(
@@ -289,19 +289,17 @@ def readC3VDInfo(datadir, mode):
     # get normalizations
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
-    # initialize sparse point clouds
     ply_path = os.path.join(datadir, "points3d.ply")
-    xyz, rgb, normals = endo_dataset.get_init_pts()
-    
-    normals = np.random.random((xyz.shape[0], 3))
-    pcd = BasicPointCloud(points=xyz, colors=rgb, normals=normals)
-    storePly(ply_path, xyz,rgb*255)
     
     embedding_info = endo_dataset.embedding_info
     try:
         pcd = fetchPly(ply_path)
     except:
         pcd = None
+        xyz, rgb, normals = endo_dataset.get_init_pts()
+        normals = np.random.random((xyz.shape[0], 3))
+        pcd = BasicPointCloud(points=xyz, colors=rgb, normals=normals)
+        storePly(ply_path, xyz,rgb*255)
     
     # get the maximum time
     maxtime = endo_dataset.get_maxtime()

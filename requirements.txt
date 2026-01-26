@@ -10,3 +10,6 @@ onnx
 onnxruntime-gpu
 opencv-python
 tqdm
+torchmetrics
+imageio
+fpsample

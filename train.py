@@ -128,7 +128,9 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                     render_pkg["visibility_filter"], render_pkg["radii"]
             gt_image = viewpoint_cam.original_image.cuda().float()
             gt_depth = viewpoint_cam.original_depth.cuda().float()
-            mask = viewpoint_cam.mask.cuda()
+            mask = viewpoint_cam.mask
+            if mask:
+                mask = mask.cuda()
             
             image_concealing = render_pkg['render_restored']
             images_concealing.append(image_concealing.unsqueeze(0))
@@ -140,7 +142,8 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             depths.append(depth.unsqueeze(0))
             gt_images.append(gt_image.unsqueeze(0))
             gt_depths.append(gt_depth.unsqueeze(0))
-            masks.append(mask.unsqueeze(0))
+            if mask:
+                masks.append(mask.unsqueeze(0))
             radii_list.append(radii.unsqueeze(0))
             visibility_filter_list.append(visibility_filter.unsqueeze(0))
             viewspace_point_tensor_list.append(viewspace_point_tensor)
@@ -152,32 +155,44 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         gt_images = torch.cat(gt_images,0)
         gt_depths = torch.cat(gt_depths, 0)
         images_concealing = torch.cat(images_concealing, 0)
-        masks = torch.cat(masks, 0)
+        if mask:
+            masks = torch.cat(masks, 0)
         
         
         rendered_images_flat = rendered_images.permute(0,2,3,1).reshape(-1, 3)
         gt_images_flat = gt_images.permute(0,2,3,1).reshape(-1, 3)
         images_concealing_flat = images_concealing.permute(0,2,3,1).reshape(-1, 3)
-        masks_flat = masks.permute(0,2,3,1).reshape(-1, 1).repeat(1, 3)
-        
-        mean_rgb_fine = torch.mean(rendered_images_flat[masks_flat].reshape(-1, 3), dim=0)
+        if mask:
+            masks_flat = masks.permute(0,2,3,1).reshape(-1, 1).repeat(1, 3)
+            mean_rgb_fine = torch.mean(rendered_images_flat[masks_flat].reshape(-1, 3), dim=0)
+            Ll1 = l1_loss(images_concealing, gt_images, masks)
+            loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat[masks_flat].reshape(-1, 3)))
+        else:
+            mean_rgb_fine = torch.mean(rendered_images_flat.reshape(-1, 3), dim=0)
+            Ll1 = l1_loss(images_concealing, gt_images)
+            loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat.reshape(-1, 3)))
 
-        Ll1 = l1_loss(images_concealing, gt_images, masks)
-        loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat[masks_flat].reshape(-1, 3)))
+        
         # loss_control = Exp_loss(patch_size=64, mean_val=hyper.eta)((rendered_images))
         
         # loss_control = content_loss(rendered_images, viewpoint_cam.reference[None].cuda(), resnet)
         if viewpoint_cam.illu_type == 'low_light':
             loss_structure = helper.Structure_Loss(contrast=hyper.eta * hyper.con/10)(gt_images_flat[masks_flat].reshape(-1, 3), \
                 rendered_images_flat[masks_flat].reshape(-1, 3))
-        else:
+        elif mask:
             loss_structure = helper.Structure_Loss(contrast=hyper.con)(rendered_images_flat[masks_flat].reshape(-1, 3), \
                 gt_images_flat[masks_flat].reshape(-1, 3))
+            depth_loss = opt.depth_weight * l1_loss(torch.clamp(rendered_depths/(rendered_depths.max()+1e-6), 0, 1), \
+            torch.clamp(gt_depths/(gt_depths.max()+1e-6), 0, 1), masks, True)
+        else:
+            loss_structure = helper.Structure_Loss(contrast=hyper.con)(rendered_images_flat.reshape(-1, 3), \
+                gt_images_flat.reshape(-1, 3))
+            depth_loss = opt.depth_weight * l1_loss(torch.clamp(rendered_depths/(rendered_depths.max()+1e-6), 0, 1), \
+            torch.clamp(gt_depths/(gt_depths.max()+1e-6), 0, 1))
         loss_cc = helper.colour(mean_rgb_fine)
         # print('depths', rendered_depths.shape)
         # print('gt', gt_depths.shape)
-        depth_loss = opt.depth_weight * l1_loss(torch.clamp(rendered_depths/(rendered_depths.max()+1e-6), 0, 1), \
-            torch.clamp(gt_depths/(gt_depths.max()+1e-6), 0, 1), masks, True)
+
         depth_tvloss = TV_loss(rendered_depths)
         img_tvloss = TV_loss(rendered_images)
         tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
@@ -199,11 +214,17 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             # out_save_con = cv2.cvtColor((np.clip(out_save_con, 0, 1)*255), cv2.COLOR_RGB2BGR).astype(np.uint8)
             # cv2.imwrite('out_con.png', out_save_con)
 
-        psnr_ = psnr(images_concealing, gt_images, masks).mean().double()        
+        if mask:
+            psnr_ = psnr(images_concealing, gt_images, masks).mean().double()      
+        else:
+            psnr_ = psnr(images_concealing, gt_images).mean().double()  
         
         loss.backward()
-        for param in gaussians.get_param():
-            torch.nn.utils.clip_grad_value_(param, clip_value=0.5)
+        for group in gaussians.optimizer.param_groups:
+            for param in group['params']:
+                if param.grad is not None:
+                    torch.nn.utils.clip_grad_value_(param, clip_value=0.5)
+
             # torch.nn.utils.clip_grad_norm_(param, max_norm=1)
         viewspace_point_tensor_grad = torch.zeros_like(viewspace_point_tensor)
         
@@ -364,7 +385,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[i*500 for i in range(0,120)])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[1000,2000, 3000,4000, 5000, 6000, 7000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[1, 1000,2000, 3000,4000, 5000, 6000, 7000])
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--start_checkpoint", type=str, default = None)

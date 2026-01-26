@@ -29,22 +29,23 @@ faulthandler.enable()
 def array2tensor(array, device="cuda", dtype=torch.float32):
     return torch.tensor(array, dtype=dtype, device=device)
 
-def readImages(renders_dir, gt_dir, masks_dir):
+def readImages(renders_dir, gt_dir):
     renders = []
     gts = []
     image_names = []
-    masks = []
     
     for fname in os.listdir(renders_dir):
+        if fname.endswith('.mp4'):
+            continue
         render = np.array(Image.open(renders_dir / fname))
         gt = np.array(Image.open(gt_dir / fname))
-        mask = np.array(Image.open(masks_dir / fname))
+        
         
         renders.append(tf.to_tensor(render).unsqueeze(0)[:, :3, :, :].cuda())
         gts.append(tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :].cuda())
-        masks.append(tf.to_tensor(mask).unsqueeze(0).cuda())
+        
         image_names.append(fname)
-    return renders, gts, masks, image_names
+    return renders, gts, image_names
 
 
 def evaluate(model_paths):
@@ -76,20 +77,20 @@ def evaluate(model_paths):
 
                 method_dir = test_dir / method
                 gt_dir = method_dir/ "gt"
-                renders_dir = method_dir / "render_con"
-                masks_dir = method_dir / "masks"
+                renders_dir = method_dir / "render_restored"
+                #masks_dir = method_dir / "masks"
                 
-                renders, gts, masks, image_names = readImages(renders_dir, gt_dir, masks_dir)
+                renders, gts, image_names = readImages(renders_dir, gt_dir)
 
                 ssims = []
                 psnrs = []
                 lpipss = []
 
                 for idx in tqdm(range(len(renders)), desc="Metric evaluation progress"):
-                    render, gt, mask = renders[idx], gts[idx], masks[idx]
+                    render, gt = renders[idx], gts[idx]
                     
-                    render = render * mask
-                    gt = gt * mask
+                    render = render
+                    gt = gt 
                     psnrs.append(psnr(render, gt))
                     ssims.append(ssim(render, gt))
                     lpipss.append(lpips_score(render, gt))

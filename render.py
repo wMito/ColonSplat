@@ -27,6 +27,7 @@ from utils.graphics_utils import fov2focal
 import json
 
 
+
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, reconstruct=False, embeddings=None,
@@ -73,6 +74,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
                 illu_type = sub_dict['illu_type']
     
     for i in range(test_times):
+        if views is None:
+            break
         for idx, view in enumerate(views):
             if idx == 0 and i == 0:
                 time1 = time()
@@ -135,13 +138,13 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             torchvision.utils.save_image(image, os.path.join(render_restored_path, '{0:05d}'.format(count) + ".png"))
             count +=1
     
-    count = 0
-    print("writing mask images.")
-    if len(mask_list) != 0:
-        for image in tqdm(mask_list):
-            image = image.float()
-            torchvision.utils.save_image(image, os.path.join(masks_path, '{0:05d}'.format(count) + ".png"))
-            count +=1
+    # count = 0
+    # print("writing mask images.")
+    # if len(mask_list) != 0:
+    #     for image in tqdm(mask_list):
+    #         image = image.float()
+    #         torchvision.utils.save_image(image, os.path.join(masks_path, '{0:05d}'.format(count) + ".png"))
+    #         count +=1
     
     count = 0
     print("writing rendered depth images.")
@@ -162,6 +165,18 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     render_array = torch.stack(render_images, dim=0).permute(0, 2, 3, 1)
     render_array = (render_array*255).clip(0, 255)
     imageio.mimwrite(os.path.join(model_path, name, "ours_{}".format(iteration), 'ours_video_wo_restoration.mp4'), render_array, fps=30, quality=8)
+
+    render_array = torch.stack(render_images_restored, dim=0).permute(0, 2, 3, 1)
+    render_array = (render_array*255).clip(0, 255)
+    imageio.mimwrite(f"{render_restored_path}/render.mp4", render_array, fps=30, quality=8)
+
+    render_array = torch.stack(render_depths, dim=0).permute(0, 2, 3, 1)
+    render_array = render_array.clip(0, 255).cpu()
+    imageio.mimwrite(f"{depth_path}/render.mp4", render_array, fps=30, quality=8)
+
+    render_array = torch.stack(gt_depths, dim=0).permute(0, 2, 3, 1)
+    render_array = render_array.clip(0, 255).cpu()
+    imageio.mimwrite(f"{gt_depth_path}/render.mp4", render_array, fps=30, quality=8)
     
     gt_array = torch.stack(gt_list, dim=0).permute(0, 2, 3, 1)
     gt_array = (gt_array*255).clip(0, 255)
@@ -170,7 +185,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     FoVy, FoVx, height, width = view.FoVy, view.FoVx, view.image_height, view.image_width
     focal_y, focal_x = fov2focal(FoVy, height), fov2focal(FoVx, width)
     camera_parameters = (focal_x, focal_y, width, height)
-    
+
     if reconstruct:
         reconstruct_point_cloud(render_images, mask_list, render_depths, camera_parameters, name, pcd_path)
         reconstruct_point_cloud(render_images_restored, mask_list, render_depths, camera_parameters, name, pcd_restored_path)
@@ -240,7 +255,7 @@ if __name__ == "__main__":
     op = OptimizationParams(parser)
     parser.add_argument("--iteration", default=-1, type=int)
     parser.add_argument("--embedding_idx", default=-1, type=int)
-    parser.add_argument("--illumination_type", default=None, type=str)
+    #parser.add_argument("--illumination_type", default=None, type=str)
     parser.add_argument("--wo_restoration", action="store_true")
     parser.add_argument("--skip_train", action="store_true")
     parser.add_argument("--skip_test", action="store_true")
@@ -267,5 +282,5 @@ if __name__ == "__main__":
                 args.skip_video,
                 args.pc,
                 args.embedding_idx,
-                args.illumination_type,
+                #args.illumination_type,
                 args.wo_restoration)

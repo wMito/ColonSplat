@@ -364,11 +364,11 @@ class GaussianModel:
         
         weight_dict_con = torch.load(os.path.join(path,"region.pth"),map_location="cuda")
         self.region.load_state_dict(weight_dict_con)
-        self.region = self.region.cuda()
+        self.region = self.region.cuda() # TODO: remove 
         
         weight_dict_glo = torch.load(os.path.join(path,"spatial.pth"),map_location="cuda")
         self.spatial.load_state_dict(weight_dict_glo)
-        self.spatial = self.spatial.cuda()
+        self.spatial = self.spatial.cuda() #TODO: remove
         
         self.illumination_embeddings = torch.load(os.path.join(path,"embedding.pth"),map_location="cuda")
 
