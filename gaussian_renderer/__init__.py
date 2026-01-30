@@ -15,7 +15,7 @@ from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianR
 from utils.sh_utils import eval_sh
 
 def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, \
-    override_color = None, stage="fine", embedding_idx=-1, embedding=None, illu_type=None, time=None):
+    override_color = None, stage="fine", embedding_idx=-1, embedding=None, illu_type=None, time=None, override_scales = None):
     """
     Render the scene. 
     
@@ -97,6 +97,9 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         opacity_final[~deformation_point] = opacity[~deformation_point]
 
     scales_final = pc.scaling_activation(scales_final)
+
+    if override_scales is not None:
+        scales_final = override_scales
     rotations_final = pc.rotation_activation(rotations_final)
     opacity = pc.opacity_activation(opacity_final)
 

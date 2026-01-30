@@ -10,3 +10,6 @@
 [submodule "submodules/diff-gaussian-rasterization-depth"]
 	path = submodules/diff-gaussian-rasterization-depth
 	url = https://github.com/leo-frank/diff-gaussian-rasterization-depth
+
+#we use rasterizer from prendo:
+# git clone https://github.com/ingra14m/depth-diff-gaussian-rasterization.git 
