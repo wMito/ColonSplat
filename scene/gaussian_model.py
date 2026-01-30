@@ -155,9 +155,14 @@ class GaussianModel:
     def get_opacity(self):
         return self.opacity_activation(self._opacity)
     
-    # @property
-    # def get_deformation_table(self):
-    #     pass 
+    @property
+    def get_deformation_table(self):
+        k = int(self._deformation_table.shape[0]*0.5)
+        topk, _ = torch.topk(self._deformation_table, k)
+        threshold = topk[-1]
+        out = torch.sigmoid((self._deformation_table - threshold)/0.1)
+        return out
+
     
     # def find_closest_indices(self, points, n_closest:int=1):
     #     if not hasattr(self, 'cuvs_index'):
@@ -286,7 +291,8 @@ class GaussianModel:
             {'params': [self.features], 'lr': training_args.feature_lr, "name": "f_dc"},
             {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
             {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
-            {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"}
+            {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
+            {'params': [self._deformation_table], 'lr': training_args.opacity_lr, "name": "deformation_table"}
         ]
         
         if self.illumination_embeddings is not None:
@@ -590,7 +596,8 @@ class GaussianModel:
         "opacity": new_opacities,
         "scaling" : new_scaling,
         "rotation" : new_rotation,
-        # "deformation": new_deformation
+        # "deformation": new_deformation,
+        "deformation_table": new_deformation_table
        }
 
         optimizable_tensors = self.cat_tensors_to_optimizer(d)

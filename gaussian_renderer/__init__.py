@@ -70,26 +70,31 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     else:
         scales = pc._scaling
         rotations = pc._rotation
-    #deformation_point = pc.get_deformation_table
+    deformation_point = pc.get_deformation_table > 0.3
     
     if stage == "coarse" :
-        means3D_deform, scales_deform, rotations_deform, opacity_deform = means3D, scales, rotations, opacity
+        means3D_final, scales_final, rotations_final, opacity_final = means3D, scales, rotations, opacity
+        
     else:
-        means3D_deform, scales_deform, rotations_deform, opacity_deform = pc._deformation(means3D, scales, 
-                                                                         rotations, opacity,
-                                                                         time)
+        means3D_deform, scales_deform, rotations_deform, opacity_deform = pc._deformation(means3D[deformation_point], scales[deformation_point], 
+                                                                         rotations[deformation_point], opacity[deformation_point],
+                                                                         time[deformation_point])
     # print(time.max())
     # with torch.no_grad():
     #     pc._deformation_accum[deformation_point] += torch.abs(means3D_deform - means3D[deformation_point])
 
-    means3D_final = torch.zeros_like(means3D)
-    rotations_final = torch.zeros_like(rotations)
-    scales_final = torch.zeros_like(scales)
-    opacity_final = torch.zeros_like(opacity)
-    means3D_final =  means3D_deform
-    rotations_final =  rotations_deform
-    scales_final =  scales_deform
-    opacity_final = opacity_deform
+        means3D_final = torch.zeros_like(means3D)
+        rotations_final = torch.zeros_like(rotations)
+        scales_final = torch.zeros_like(scales)
+        opacity_final = torch.zeros_like(opacity)
+        means3D_final[deformation_point] =  means3D_deform
+        rotations_final[deformation_point] =  rotations_deform
+        scales_final[deformation_point] =  scales_deform
+        opacity_final[deformation_point] = opacity_deform
+        means3D_final[~deformation_point] = means3D[~deformation_point]
+        rotations_final[~deformation_point] = rotations[~deformation_point]
+        scales_final[~deformation_point] = scales[~deformation_point]
+        opacity_final[~deformation_point] = opacity[~deformation_point]
 
     scales_final = pc.scaling_activation(scales_final)
     rotations_final = pc.rotation_activation(rotations_final)
@@ -98,18 +103,6 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     shs = None
     colors_precomp = pc.features
     
-    if embedding is not None:
-        app_embeddings = embedding
-    else:
-        if embedding_idx == -1:
-            app_embeddings = pc.get_embedding(viewpoint_camera.id)[None]
-        else:
-            app_embeddings = pc.get_embedding(embedding_idx)[None]
-            
-    if illu_type is None:
-        input_illu_type=viewpoint_camera.illu_type
-    else:
-        input_illu_type=illu_type
         
     # color_tone = pc.region(colors_precomp, app_embeddings.repeat(len(means2D), 1), \
     #     ill_type=input_illu_type)
@@ -138,15 +131,15 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     # for ablation
     # rendered_image_concealing = rendered_image
     
-    rendered_image_concealing, radii, depth = rasterizer(
-        means3D = means3D_final,
-        means2D = means2D,
-        shs = None, #shs*pc.get_concealing[:, None, :]
-        colors_precomp = colors_precomp,
-        opacities = opacity,
-        scales = scales_final,
-        rotations = rotations_final,
-        cov3D_precomp = cov3D_precomp)
+    # rendered_image_concealing, radii, depth = rasterizer(
+    #     means3D = means3D_final,
+    #     means2D = means2D,
+    #     shs = None, #shs*pc.get_concealing[:, None, :]
+    #     colors_precomp = colors_precomp,
+    #     opacities = opacity,
+    #     scales = scales_final,
+    #     rotations = rotations_final,
+    #     cov3D_precomp = cov3D_precomp)
     
     # for ablation
     # rendered_image_concealing = pc.spatial(rendered_image_concealing.permute(1,2,0)).permute(2,0,1)
@@ -155,7 +148,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     #     app_embeddings)
     
     return {"render": rendered_image,
-            "render_restored":rendered_image_concealing,
+            "render_restored": rendered_image,
             "depth": depth,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,

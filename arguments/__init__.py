@@ -101,9 +101,9 @@ class ModelHiddenParams(ParamGroup):
         self.no_dx=False
         self.no_grid=False
         self.no_dx=False
-        self.no_ds=False
-        self.no_dr=False
-        self.no_do=False
+        self.no_ds=True
+        self.no_dr=True
+        self.no_do=True
         self.illumination_embedding_dim = 32
         
         super().__init__(parser, "ModelHiddenParams")
@@ -112,7 +112,7 @@ class OptimizationParams(ParamGroup):
     def __init__(self, parser):
         self.dataloader=False
         self.iterations = 30_000
-        self.coarse_iterations = 3000
+        self.coarse_iterations = 100
         self.position_lr_init = 0.00016 #0.00016
         self.position_lr_final = 0.0000016 #0.0000016
         
@@ -168,7 +168,7 @@ class OptimizationParams(ParamGroup):
         
         
         self.control_weight = 1e-3
-        self.depth_weight=1e-2
+        self.depth_weight=1e-1
         self.tv_weight=1e-2
         
 
