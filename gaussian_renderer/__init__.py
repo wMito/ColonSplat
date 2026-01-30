@@ -70,34 +70,30 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     else:
         scales = pc._scaling
         rotations = pc._rotation
-    deformation_point = pc._deformation_table
+    #deformation_point = pc.get_deformation_table
     
     if stage == "coarse" :
         means3D_deform, scales_deform, rotations_deform, opacity_deform = means3D, scales, rotations, opacity
     else:
-        means3D_deform, scales_deform, rotations_deform, opacity_deform = pc._deformation(means3D[deformation_point], scales[deformation_point], 
-                                                                         rotations[deformation_point], opacity[deformation_point],
-                                                                         time[deformation_point])
+        means3D_deform, scales_deform, rotations_deform, opacity_deform = pc._deformation(means3D, scales, 
+                                                                         rotations, opacity,
+                                                                         time)
     # print(time.max())
-    with torch.no_grad():
-        pc._deformation_accum[deformation_point] += torch.abs(means3D_deform - means3D[deformation_point])
+    # with torch.no_grad():
+    #     pc._deformation_accum[deformation_point] += torch.abs(means3D_deform - means3D[deformation_point])
 
     means3D_final = torch.zeros_like(means3D)
     rotations_final = torch.zeros_like(rotations)
     scales_final = torch.zeros_like(scales)
     opacity_final = torch.zeros_like(opacity)
-    means3D_final[deformation_point] =  means3D_deform
-    rotations_final[deformation_point] =  rotations_deform
-    scales_final[deformation_point] =  scales_deform
-    opacity_final[deformation_point] = opacity_deform
-    means3D_final[~deformation_point] = means3D[~deformation_point]
-    rotations_final[~deformation_point] = rotations[~deformation_point]
-    scales_final[~deformation_point] = scales[~deformation_point]
-    opacity_final[~deformation_point] = opacity[~deformation_point]
+    means3D_final =  means3D_deform
+    rotations_final =  rotations_deform
+    scales_final =  scales_deform
+    opacity_final = opacity_deform
 
     scales_final = pc.scaling_activation(scales_final)
     rotations_final = pc.rotation_activation(rotations_final)
-    opacity = pc.opacity_activation(opacity)
+    opacity = pc.opacity_activation(opacity_final)
 
     shs = None
     colors_precomp = pc.features
@@ -115,8 +111,8 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     else:
         input_illu_type=illu_type
         
-    color_tone = pc.region(colors_precomp, app_embeddings.repeat(len(means2D), 1), \
-        ill_type=input_illu_type)
+    # color_tone = pc.region(colors_precomp, app_embeddings.repeat(len(means2D), 1), \
+    #     ill_type=input_illu_type)
     
     # for ablation
     # color_tone = pc.region(colors_precomp, \
@@ -146,7 +142,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         means3D = means3D_final,
         means2D = means2D,
         shs = None, #shs*pc.get_concealing[:, None, :]
-        colors_precomp = color_tone,
+        colors_precomp = colors_precomp,
         opacities = opacity,
         scales = scales_final,
         rotations = rotations_final,
@@ -155,13 +151,14 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     # for ablation
     # rendered_image_concealing = pc.spatial(rendered_image_concealing.permute(1,2,0)).permute(2,0,1)
     
-    rendered_image_concealing = pc.spatial(rendered_image_concealing, \
-        app_embeddings)
+    # rendered_image_concealing = pc.spatial(rendered_image_concealing, \
+    #     app_embeddings)
     
     return {"render": rendered_image,
             "render_restored":rendered_image_concealing,
             "depth": depth,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
-            "radii": radii,}
+            "radii": radii,
+            "transformed_points": means3D_final}
 

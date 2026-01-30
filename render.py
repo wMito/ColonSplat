@@ -105,6 +105,14 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
                 render_depths.append(rendering["depth"])
                 render_images.append(rendering["render"].cpu())
                 render_images_restored.append(rendering["render_restored"].cpu())
+
+                current_means = rendering["transformed_points"]
+                pts = current_means.cpu().numpy()
+                pcd_out = o3d.geometry.PointCloud()
+                pcd_out.points = o3d.utility.Vector3dVector(pts)
+                ply_path = os.path.join(pcd_path, 'frame_{:05d}.ply'.format(idx))
+                o3d.io.write_point_cloud(ply_path, pcd_out)
+
                 
                 if name in ["train", "test", "video"]:
                     gt = view.original_image[0:3, :, :]

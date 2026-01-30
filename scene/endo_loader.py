@@ -416,47 +416,10 @@ class C3VD_Dataset(object):
             pts, colors = pts_total[sel_idxs], colors_total[sel_idxs]
             normals = np.zeros((pts.shape[0], 3))
         elif self.mode == 'monocular':
-            if True:
-                color, depth, mask = self.get_color_depth_mask(0, mode=self.mode)
-                pts, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
-                pts = self.get_pts_wld(pts, self.image_poses[0])
-                normals = np.zeros((pts.shape[0], 3))
-            if False:
-                pts_accum = []
-                colors_accum = []
-                for idx in self.train_idxs:
-                    if idx in (0, 67, 214):
-                        continue
-                    color, depth, mask = self.get_color_depth_mask(idx, mode=self.mode)
-                    pts_cam, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
-                    pts_wld = self.get_pts_wld(pts_cam, self.image_poses[idx])
-                    if pts_wld.size == 0:
-                        continue
-                    pts_accum.append(pts_wld)
-                    colors_accum.append(colors)
-
-                if len(pts_accum) == 0:
-                    return np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3))
-
-                pts_all = np.concatenate(pts_accum, axis=0)
-                colors_all = np.concatenate(colors_accum, axis=0)
-
-                # build Open3D point cloud and clean / downsample
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(pts_all)
-                pcd.colors = o3d.utility.Vector3dVector(colors_all)
-
-                # voxel downsample + remove outliers
-                voxel_size = 0.005  # adjust to scene scale (meters). Tune for your data.
-                pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
-                pcd, ind = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
-
-                # estimate normals for later use
-                pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 4, max_nn=30))
-
-                pts = np.asarray(pcd.points).astype(np.float32)
-                colors = np.asarray(pcd.colors).astype(np.float32)
-                normals = np.asarray(pcd.normals).astype(np.float32)
+            color, depth, mask = self.get_color_depth_mask(0, mode=self.mode)
+            pts, colors, _ = self.get_pts_cam(depth, mask, color, disable_mask=False)
+            pts = self.get_pts_wld(pts, self.image_poses[0])
+            normals = np.zeros((pts.shape[0], 3))
         
         return pts, colors, normals
         

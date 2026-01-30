@@ -9,6 +9,7 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+from operator import index
 import torch
 import numpy as np
 from utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
@@ -20,18 +21,15 @@ from random import randint
 from utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
-from utils.general_utils import strip_symmetric, build_scaling_rotation
+from utils.general_utils import strip_symmetric, build_scaling_rotation, cdist
 from scene.deformation import deform_network
 from scene.regulation import compute_plane_smoothness
-from scene.region_field import RegionConcealing
-# from scene.region_field_wo_em import Concealing
-
-from scene.spatial_field import SpatialConcealing
-# from scene.spatial_field_wo_em import spatialConcealing
+#from cuvs.neighbors import brute_force, ivf_flat
 
 from gaussian_renderer import render
 from utils.loss_utils import l1_loss
 from tqdm import tqdm
+import time
 
 
 class GaussianModel:
@@ -49,6 +47,7 @@ class GaussianModel:
         self.opacity_activation = torch.sigmoid
         self.inverse_opacity_activation = inverse_sigmoid
         self.rotation_activation = torch.nn.functional.normalize
+        self.faiss_index = None
         
 
     def __init__(self, sh_degree : int, args):
@@ -74,8 +73,6 @@ class GaussianModel:
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
-        self.region = RegionConcealing(3, args.net_width, 3, 1, args)
-        self.spatial = SpatialConcealing(3, args.net_width, 3, 1, args)
         self.setup_functions()
 
     def capture(self):
@@ -110,9 +107,7 @@ class GaussianModel:
             self._rotation,
             self._opacity,
             self._deformation.get_grid_parameters(),
-            self._deformation.get_mlp_parameters(), 
-            self.region.parameters(),
-            self.spatial.parameters()]
+            self._deformation.get_mlp_parameters()]
     
     def restore(self, model_args, training_args):
         (self.active_sh_degree, 
@@ -160,6 +155,22 @@ class GaussianModel:
     def get_opacity(self):
         return self.opacity_activation(self._opacity)
     
+    # @property
+    # def get_deformation_table(self):
+    #     pass 
+    
+    # def find_closest_indices(self, points, n_closest:int=1):
+    #     if not hasattr(self, 'cuvs_index'):
+    #         raise ValueError("cuVS index not initialized")
+        
+    #     # cuVS search returns (distances, indices)
+    #     _, indices = brute_force.search(
+    #         index=self.cuvs_index,
+    #         queries=points.detach().contiguous(),
+    #         k=100+1
+    #     )
+    #     return torch.as_tensor(indices, device='cuda')[:, 1:]
+    
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
@@ -190,8 +201,6 @@ class GaussianModel:
         self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._deformation = self._deformation.to("cuda") 
 
-        self.region = self.region.cuda()        
-        self.spatial = self.spatial.cuda()   
              
         self.features = nn.Parameter(features.requires_grad_(True))
         # self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
@@ -203,8 +212,62 @@ class GaussianModel:
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
-        self._deformation_table = torch.gt(torch.ones((self.get_xyz.shape[0]),device="cuda"),0)
-    
+        #self._deformation_table = torch.gt(torch.ones((self.get_xyz.shape[0]),device="cuda"),0)
+        self._deformation_table = nn.Parameter(torch.rand((self.get_xyz.shape[0]),device="cuda").requires_grad_(True))
+        #self.original_normals, self.closest_point_indices = self.compute_point_cloud_normals(k=100, create_faiss_index=True)
+        #self.closest_point_indices = self.find_closest_indices(self.get_xyz)
+        # TODO: add loss so based on closest_point_indices it doesnt move other more
+
+    # def compute_point_cloud_normals(self, k=10, create_faiss_index=True):
+    #     start = time.time()
+    #     print("Computing normals via cuVS on H100...")
+
+    #     # Ensure xyz is a CuPy array or DLPack-compatible tensor on GPU
+    #     # cuVS works directly with __cuda_array_interface__ (PyTorch/CuPy)
+    #     xyz = self.get_xyz.contiguous().cuda() 
+        
+    #     # 1. Faster k-NN Search using cuVS
+    #     # Instead of manual cdist + topk, use cuVS brute_force search
+    #     # This is optimized specifically for H100 HBM3 bandwidth.
+    #     print("Performing k-NN search...")
+    #     index = brute_force.build(dataset=xyz.detach().contiguous(), metric="sqeuclidean")
+    #     distances, indices = brute_force.search(
+    #         index=index,
+    #         queries=xyz.detach().contiguous(),
+    #         k=k+1
+    #     )
+        
+    #     # Remove self-match (the 0th neighbor)
+    #     k_neighbors_indices = torch.as_tensor(indices, device='cuda' )[:, 1:]
+        
+    #     # 2. Vectorized Normal Computation (PCA)
+    #     # Avoid the chunked loop if your VRAM allows; H100 has 80GB!
+    #     # If it's too big, keep the chunking but keep logic in Torch.
+        
+    #     # Reshape xyz into the neighborhood structure
+    #     # [N, k, 3]
+    #     neighbors = xyz[k_neighbors_indices.long()]
+        
+    #     # Optimized PCA via torch
+    #     neighbors = xyz[k_neighbors_indices] # [N, k, 3]
+    #     neighbors_centered = neighbors - neighbors.mean(dim=1, keepdim=True)
+        
+    #     # Covariance and Eigen-decomposition
+    #     covariance = torch.matmul(neighbors_centered.transpose(-2, -1), neighbors_centered) / (k - 1)
+    #     _, eigenvectors = torch.linalg.eigh(covariance)
+        
+    #     # The normal is the eigenvector corresponding to the smallest eigenvalue
+    #     normals = eigenvectors[..., 0]
+    #     normals_normalized = torch.nn.functional.normalize(normals, dim=1, eps=1e-8)
+        
+    #     all_normals = torch.cat((xyz, normals_normalized), dim=1)
+
+    #     if create_faiss_index:
+    #         # We store the cuVS index instead of Faiss for the H100 speedup
+    #         self.cuvs_index = index 
+            
+    #     return all_normals, k_neighbors_indices
+
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
@@ -214,8 +277,8 @@ class GaussianModel:
         l = [
             {'params': [self._xyz], 'lr': training_args.position_lr_init, "name": "xyz"},
             {'params': list(self._deformation.get_mlp_parameters()), 'lr': training_args.deformation_lr_init, "name": "deformation"},
-            {'params': list(self.region.parameters()), 'lr': training_args.region_lr, "name": "region"},  
-            {'params': list(self.spatial.parameters()), 'lr': training_args.spatial_lr, "name": "spatial"},            
+            #{'params': list(self.region.parameters()), 'lr': training_args.region_lr, "name": "region"},  
+            #{'params': list(self.spatial.parameters()), 'lr': training_args.spatial_lr, "name": "spatial"},            
                       
             {'params': list(self._deformation.get_grid_parameters()), 'lr': training_args.grid_lr_init, "name": "grid"},
             # {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
@@ -246,14 +309,6 @@ class GaussianModel:
                                                     max_steps=training_args.position_lr_max_steps) 
         
         
-        self.region_scheduler_args = get_expon_lr_func(lr_init=training_args.region_lr_fine,
-                                                    lr_final=training_args.region_lr_fine_final,
-                                                    lr_delay_mult=training_args.deformation_lr_delay_mult,
-                                                    max_steps=training_args.position_lr_max_steps) 
-        self.spatial_scheduler_args = get_expon_lr_func(lr_init=training_args.spatial_lr_fine,
-                                                    lr_final=training_args.spatial_lr_fine_final,
-                                                    lr_delay_mult=training_args.deformation_lr_delay_mult,
-                                                    max_steps=training_args.position_lr_max_steps)   
         self.embedding_scheduler_args = get_expon_lr_func(lr_init=training_args.illumination_embedding_lr_fine,
                                                     lr_final=training_args.illumination_embedding_lr_fine_final,
                                                     lr_delay_mult=training_args.deformation_lr_delay_mult,
@@ -312,14 +367,7 @@ class GaussianModel:
                 param_group['lr'] = lr
                 # return lr
             if stage == 'fine':
-                if param_group["name"] == "region":
-                    lr = self.region_scheduler_args(iteration)
-                    param_group['lr'] = lr
-                    
-                elif  "spatial" in param_group["name"]:
-                    lr = self.spatial_scheduler_args(iteration)
-                    param_group['lr'] = lr
-                elif param_group["name"] == "illumination_embeddings":
+                if param_group["name"] == "illumination_embeddings":
                     lr = self.embedding_scheduler_args(iteration)
                     param_group['lr'] = lr
                 
@@ -362,13 +410,6 @@ class GaussianModel:
         
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         
-        weight_dict_con = torch.load(os.path.join(path,"region.pth"),map_location="cuda")
-        self.region.load_state_dict(weight_dict_con)
-        self.region = self.region.cuda() # TODO: remove 
-        
-        weight_dict_glo = torch.load(os.path.join(path,"spatial.pth"),map_location="cuda")
-        self.spatial.load_state_dict(weight_dict_glo)
-        self.spatial = self.spatial.cuda() #TODO: remove
         
         self.illumination_embeddings = torch.load(os.path.join(path,"embedding.pth"),map_location="cuda")
 
@@ -377,10 +418,7 @@ class GaussianModel:
         torch.save(self._deformation.state_dict(),os.path.join(path, "deformation.pth"))
         torch.save(self._deformation_table,os.path.join(path, "deformation_table.pth"))
         torch.save(self._deformation_accum,os.path.join(path, "deformation_accum.pth"))
-        
-    def save_concealing(self, path):
-        torch.save(self.region.state_dict(),os.path.join(path, "region.pth"))
-        torch.save(self.spatial.state_dict(),os.path.join(path, "spatial.pth"))
+
         
     def save_embedding(self, path):
         torch.save(self.illumination_embeddings, os.path.join(path, "embedding.pth"))
@@ -517,6 +555,7 @@ class GaussianModel:
         self._deformation_table = self._deformation_table[valid_points_mask]
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
+        #self.closest_point_indices = self.closest_point_indices[valid_points_mask]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
@@ -569,6 +608,9 @@ class GaussianModel:
         self._deformation_accum = torch.zeros((self.get_xyz.shape[0], 3), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        # if new_xyz.shape[0]>0:
+        #     new_closest_point_indices = self.find_closest_indices(new_xyz)
+        #     self.closest_point_indices = torch.cat((self.closest_point_indices, new_closest_point_indices), dim=0)
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
         n_init_points = self.get_xyz.shape[0]

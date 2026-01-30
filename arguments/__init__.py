@@ -57,7 +57,7 @@ class ModelParams(ParamGroup):
         self.render_process=False
         self.extra_mark = None
         self.camera_extent = None
-        self.mode = 'binocular'
+        self.mode = 'monocular'
         self.no_fine = False
         self.init_pts = 200_000
         super().__init__(parser, "Loading Parameters", sentinel)
@@ -129,13 +129,13 @@ class OptimizationParams(ParamGroup):
         self.grid_lr_init = 0.001 #0.0016
         self.grid_lr_final = 0.0001 #0.00016
         
-        self.region_lr = 0.001
-        self.region_lr_fine = 0.001
-        self.region_lr_fine_final = 0.00001
+        # self.region_lr = 0.001
+        # self.region_lr_fine = 0.001
+        # self.region_lr_fine_final = 0.00001
         
-        self.spatial_lr = 0.001
-        self.spatial_lr_fine = 0.001
-        self.spatial_lr_fine_final = 0.00001
+        # self.spatial_lr = 0.001
+        # self.spatial_lr_fine = 0.001
+        # self.spatial_lr_fine_final = 0.00001
         
         
         self.percent_dense = 0.01

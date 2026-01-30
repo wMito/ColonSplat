@@ -96,16 +96,3 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
         return ssim_map.mean()
     else:
         return ssim_map.mean(1).mean(1).mean(1)
-
-class Exp_loss(nn.Module):
-    def __init__(self, patch_size=64, mean_val=0.2):
-        super(Exp_loss, self).__init__()
-        self.pool = nn.AvgPool2d(patch_size)
-        self.mean_val = mean_val
-    
-    def forward(self, x, mask=None):
-        x = torch.mean(x, 1, keepdim=True)
-        mean = self.pool(x)
-        power = torch.pow(mean - torch.FloatTensor([self.mean_val]).cuda(),2)
-        loss = torch.mean(power)
-        return loss

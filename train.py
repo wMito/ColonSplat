@@ -14,7 +14,7 @@ import random
 import os
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim, lpips_loss, TV_loss, Exp_loss
+from utils.loss_utils import l1_loss, ssim, lpips_loss, TV_loss
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
@@ -123,9 +123,9 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         
         for viewpoint_cam in viewpoint_cams:
             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage)
-            image, depth, viewspace_point_tensor, visibility_filter, radii = \
+            image, depth, viewspace_point_tensor, visibility_filter, radii, transformed_means = \
                 render_pkg["render"], render_pkg["depth"], render_pkg["viewspace_points"], \
-                    render_pkg["visibility_filter"], render_pkg["radii"]
+                    render_pkg["visibility_filter"], render_pkg["radii"], render_pkg["transformed_points"]
             gt_image = viewpoint_cam.original_image.cuda().float()
             gt_depth = viewpoint_cam.original_depth.cuda().float()
             mask = viewpoint_cam.mask
@@ -159,45 +159,45 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             masks = torch.cat(masks, 0)
         
         
-        rendered_images_flat = rendered_images.permute(0,2,3,1).reshape(-1, 3)
-        gt_images_flat = gt_images.permute(0,2,3,1).reshape(-1, 3)
-        images_concealing_flat = images_concealing.permute(0,2,3,1).reshape(-1, 3)
+        # rendered_images_flat = rendered_images.permute(0,2,3,1).reshape(-1, 3)
+        # gt_images_flat = gt_images.permute(0,2,3,1).reshape(-1, 3)
+        # images_concealing_flat = images_concealing.permute(0,2,3,1).reshape(-1, 3)
         if mask:
             masks_flat = masks.permute(0,2,3,1).reshape(-1, 1).repeat(1, 3)
-            mean_rgb_fine = torch.mean(rendered_images_flat[masks_flat].reshape(-1, 3), dim=0)
             Ll1 = l1_loss(images_concealing, gt_images, masks)
-            loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat[masks_flat].reshape(-1, 3)))
+            #loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat[masks_flat].reshape(-1, 3)))
         else:
-            mean_rgb_fine = torch.mean(rendered_images_flat.reshape(-1, 3), dim=0)
             Ll1 = l1_loss(images_concealing, gt_images)
-            loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat.reshape(-1, 3)))
+            #loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat.reshape(-1, 3)))
 
-        
-        # loss_control = Exp_loss(patch_size=64, mean_val=hyper.eta)((rendered_images))
-        
-        # loss_control = content_loss(rendered_images, viewpoint_cam.reference[None].cuda(), resnet)
-        if viewpoint_cam.illu_type == 'low_light':
-            loss_structure = helper.Structure_Loss(contrast=hyper.eta * hyper.con/10)(gt_images_flat[masks_flat].reshape(-1, 3), \
-                rendered_images_flat[masks_flat].reshape(-1, 3))
-        elif mask:
-            loss_structure = helper.Structure_Loss(contrast=hyper.con)(rendered_images_flat[masks_flat].reshape(-1, 3), \
-                gt_images_flat[masks_flat].reshape(-1, 3))
+
+        if mask:
             depth_loss = opt.depth_weight * l1_loss(torch.clamp(rendered_depths/(rendered_depths.max()+1e-6), 0, 1), \
             torch.clamp(gt_depths/(gt_depths.max()+1e-6), 0, 1), masks, True)
         else:
-            loss_structure = helper.Structure_Loss(contrast=hyper.con)(rendered_images_flat.reshape(-1, 3), \
-                gt_images_flat.reshape(-1, 3))
             depth_loss = opt.depth_weight * l1_loss(torch.clamp(rendered_depths/(rendered_depths.max()+1e-6), 0, 1), \
             torch.clamp(gt_depths/(gt_depths.max()+1e-6), 0, 1))
-        loss_cc = helper.colour(mean_rgb_fine)
         # print('depths', rendered_depths.shape)
         # print('gt', gt_depths.shape)
+
+
+        # idx = gaussians.closest_point_indices
+        # K = int(idx.max().item()) + 1
+
+        # cluster_pts = transformed_means[idx]
+        # cluster_means = cluster_pts.mean(dim=1)
+        # center_points = transformed_means[torch.arange(cluster_means.shape[0], device=cluster_means.device)]
+        # per_point_sq_dist = ((center_points - cluster_means) ** 2).sum(dim=1)
+
+
+        # # add to total loss with a weight (tune weight)
+        # loss_clusters = 0.001 * per_point_sq_dist.mean()
 
         depth_tvloss = TV_loss(rendered_depths)
         img_tvloss = TV_loss(rendered_images)
         tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
         
-        loss = Ll1 + depth_loss + tv_loss + opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
+        loss = Ll1 + depth_loss + tv_loss #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
         
         
         # out_save_dep = rendered_depths.squeeze(0).permute(1,2,0).detach().cpu().numpy()
@@ -250,7 +250,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             # Log and save
             timer.pause()
             metrics = {'Ll1':Ll1, 'depth_loss':depth_loss, 'elapsed':iter_start.elapsed_time(iter_end), \
-                'psnr':psnr_, 'control_loss':loss_control, 'structure_loss':loss_structure, 'cc_loss':loss_cc}
+                'psnr':psnr_}
             
             training_report(tb_writer, iteration, metrics, \
                 testing_iterations, scene, render, [pipe, background], stage)
@@ -320,8 +320,8 @@ def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, c
         # gaussians.update_lr('spatial', 1e-3)
         
         gaussians.update_lr('illumination_embeddings', opt.illumination_embedding_lr_fine)
-        gaussians.update_lr('region', opt.region_lr_fine)
-        gaussians.update_lr('spatial', opt.spatial_lr_fine)
+        #gaussians.update_lr('region', opt.region_lr_fine)
+        #gaussians.update_lr('spatial', opt.spatial_lr_fine)
         
         # gaussians.update_lr('xyz', opt.position_lr_init * self.spatial_lr_scale)
         
@@ -358,9 +358,6 @@ def training_report(tb_writer, iteration, metrics, testing_iterations, scene : S
         tb_writer.add_scalar(f'{stage}/l1_loss', metrics['Ll1'].item(), iteration)
         tb_writer.add_scalar(f'{stage}/depth_loss', metrics['depth_loss'].item(), iteration)
         tb_writer.add_scalar(f'{stage}/psnr', metrics['psnr'].item(), iteration)
-        tb_writer.add_scalar(f'{stage}/control_loss', metrics['control_loss'].item(), iteration)
-        tb_writer.add_scalar(f'{stage}/structure_loss', metrics['structure_loss'].item(), iteration)
-        tb_writer.add_scalar(f'{stage}/cc_loss', metrics['cc_loss'].item(), iteration)
         tb_writer.add_scalar(f'{stage}/iter_time', metrics['elapsed'], iteration)
 
 def setup_seed(seed):
