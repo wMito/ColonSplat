@@ -75,3 +75,22 @@ def fov2focal(fov, pixels):
 
 def focal2fov(focal, pixels):
     return 2*math.atan(pixels/(2*focal))
+
+def look_at(camera_position, target_position, up_dir):
+    camera_direction = camera_position - target_position
+    camera_direction = camera_direction / np.linalg.norm(camera_direction)
+    camera_right = np.cross(up_dir, camera_direction)
+    camera_right = camera_right / np.linalg.norm(camera_right)
+    camera_up = np.cross(camera_direction, camera_right)
+    camera_up = camera_up / np.linalg.norm(camera_up)
+    rotation_transform = np.zeros((4, 4))
+    rotation_transform[0, :3] = camera_right
+    rotation_transform[1, :3] = camera_up
+    rotation_transform[2, :3] = camera_direction
+    rotation_transform[-1, -1] = 1.0
+    translation_transform = np.eye(4)
+    translation_transform[:3, -1] = -np.array(camera_position)
+    look_at_transform = np.matmul(rotation_transform, translation_transform)
+    look_at_transform[1:3, :] *= -1
+    look_at_transform=look_at_transform.T
+    return look_at_transform

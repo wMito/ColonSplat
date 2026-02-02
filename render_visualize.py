@@ -25,31 +25,21 @@ from time import time
 import open3d as o3d
 from utils.graphics_utils import fov2focal
 import json
-
+from utils.lookat_utils import generateLookAtCams
 
 
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, reconstruct=False, embeddings=None,
                embedding_idx=-1, illu_type=None, wo_restoration=False):
-    render_path = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "renders")
-    render_restored_path = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "render_restored")
-    render_path_small = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "renders_small")
-    render_restored_path_small = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "render_restored_small")
-
-
+    
+    render_path = os.path.join(model_path, name, "ours_vis_{}".format(iteration))
     makedirs(render_path, exist_ok=True)
-    makedirs(render_restored_path, exist_ok=True)    
-    makedirs(render_path_small, exist_ok=True)
-    makedirs(render_restored_path_small, exist_ok=True) 
-
+    
     with open(os.path.join(model_path, 'embedding_info.json'), 'r', encoding='utf-8') as file:
         embedding_dict = json.load(file)
     
-    render_images = []
-    render_images_restored = []
-    render_images_small = []
-    render_images_restored_small = []
+
     gt_list = []
 
     test_times = 1
@@ -63,107 +53,80 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             if sub_dict['train_count'] == embedding_idx:
                 illu_type = sub_dict['illu_type']
     
+    # this is camera from first frame
     view_zero = views[0]
-    for i in range(test_times):
-        if views is None:
-            break
-        for idx, view in enumerate(views):
-            if idx == 0 and i == 0:
-                time1 = time()
-            if embedding_idx==-1 and illu_type is None:
-                if wo_restoration:
-                    # varying illumination reconstruction, use the previous neighbour
-                    embedding_idx = embedding_dict[str(view.uid-1)]['train_count']
-                    embedding = embeddings[view.id][None]
-                    illu_type = None
-                    
-                    # embedding=None
-                    # embedding_idx = 7
-                    # illu_type = 'low_light' #cutting 'over_exposure' #pulling 
-                    # print('time_view', time_view)
-                    # print('json embedding_idx', embedding_idx)
 
-                else:
-                    # default testing restoration reference
-                    embedding_idx = 7
-                    illu_type = 'low_light' if "cutting" in model_path else 'over_exposure' #pulling
-                    time_view=None
-            
-            small_scales = gaussians.get_scaling.clamp_max(gaussians.spatial_lr_scale*0.01)
-            time_view = torch.tensor(view.time)
-            rendering_small = render(view_zero, gaussians, pipeline, background, embedding_idx=embedding_idx, \
-                embedding=embedding, illu_type=illu_type, time=time_view, override_scales=small_scales)
-            rendering = render(view_zero, gaussians, pipeline, background, embedding_idx=embedding_idx, \
-                embedding=embedding, illu_type=illu_type, time=time_view)
-            if i == test_times-1:
-                render_images_small.append(rendering_small["render"].cpu())
-                render_images_restored_small.append(rendering_small["render_restored"].cpu())
-                render_images.append(rendering["render"].cpu())
-                render_images_restored.append(rendering["render_restored"].cpu())
+    ## this generates  lookAt cameras settings to override:
+    ## new camera location and rotation so that camera look at colon from far away
+    xyz = gaussians.get_xyz
+    radius = 100
+    n_directions = 10 #here we set from how many directions (camers) we want to see the colon. set as many as you wish
+    lookat_cameras = generateLookAtCams(xyz, view_zero, radius, n_directions = n_directions)
 
-                current_means = rendering["transformed_points"]
-                pts = current_means.cpu().numpy()
-                pcd_out = o3d.geometry.PointCloud()
-                pcd_out.points = o3d.utility.Vector3dVector(pts)
+    lookat_cameras.append(None) # lets also append None, which results in original settings from camera zero
+    ##
 
+    for lookat_idx, lookat_cam_settings in enumerate(lookat_cameras):
+        render_images = []
+        render_images_restored = []
+    
+        for i in range(test_times):
+            if views is None:
+                break
+            for idx, view in enumerate(views):
+                if idx == 0 and i == 0:
+                    time1 = time()
+                if embedding_idx==-1 and illu_type is None:
+                    if wo_restoration:
+                        # varying illumination reconstruction, use the previous neighbour
+                        embedding_idx = embedding_dict[str(view.uid-1)]['train_count']
+                        embedding = embeddings[view.id][None]
+                        illu_type = None
+                        
+                        # embedding=None
+                        # embedding_idx = 7
+                        # illu_type = 'low_light' #cutting 'over_exposure' #pulling 
+                        # print('time_view', time_view)
+                        # print('json embedding_idx', embedding_idx)
+
+                    else:
+                        # default testing restoration reference
+                        embedding_idx = 7
+                        illu_type = 'low_light' if "cutting" in model_path else 'over_exposure' #pulling
+                        time_view=None
                 
-                if name in ["train", "test", "video"]:
-                    gt = view.original_image[0:3, :, :]
-                    gt_list.append(gt)
+                small_scales = gaussians.get_scaling.clamp_max(0.05) #gaussians.spatial_lr_scale*1.0)
+                time_view = torch.tensor(view.time)
+                rendering = render(view_zero, gaussians, pipeline, background, embedding_idx=embedding_idx, \
+                    embedding=embedding, illu_type=illu_type, time=time_view, override_scales=small_scales, \
+                    override_raster_settings=lookat_cam_settings)
+                
+                if i == test_times-1:
+                    render_images.append(rendering["render"].cpu())
+                    render_images_restored.append(rendering["render_restored"].cpu())
 
-    time2=time()
-    print("FPS:",(len(views))*test_times/(time2-time1))
-    # import pdb; pdb.set_trace()
-            
-    count = 0
-    print("writing rendering images.")
-    if len(render_images) != 0:
-        for image in tqdm(render_images):
-            torchvision.utils.save_image(image, os.path.join(render_path, '{0:05d}'.format(count) + ".png"))
-            count +=1
-            
-    count = 0
-    print("writing rendering images restored.")
-    if len(render_images_restored) != 0:
-        for image in tqdm(render_images_restored):
-            torchvision.utils.save_image(image, os.path.join(render_restored_path, '{0:05d}'.format(count) + ".png"))
-            count +=1
-    
-    count = 0
-    print("writing rendering images small.")
-    if len(render_images_small) != 0:
-        for image in tqdm(render_images_small):
-            torchvision.utils.save_image(image, os.path.join(render_path_small, '{0:05d}'.format(count) + ".png"))
-            count +=1
-            
-    count = 0
-    print("writing rendering images restored small.")
-    if len(render_images_restored_small) != 0:
-        for image in tqdm(render_images_restored_small):
-            torchvision.utils.save_image(image, os.path.join(render_restored_path_small, '{0:05d}'.format(count) + ".png"))
-            count +=1
-    
-    render_array = torch.stack(render_images, dim=0).permute(0, 2, 3, 1)
-    render_array = (render_array*255).clip(0, 255)
-    imageio.mimwrite(os.path.join(model_path, name, "ours_vis_{}".format(iteration), 'ours_video_gaussians.mp4'), render_array, fps=30, quality=8)
+                    current_means = rendering["transformed_points"]
+                    pts = current_means.cpu().numpy()
+                    pcd_out = o3d.geometry.PointCloud()
+                    pcd_out.points = o3d.utility.Vector3dVector(pts)
 
-    render_array = torch.stack(render_images_restored, dim=0).permute(0, 2, 3, 1)
-    render_array = (render_array*255).clip(0, 255)
-    imageio.mimwrite(f"{render_restored_path}/render_gaussians.mp4", render_array, fps=30, quality=8)
+                    
+                    if name in ["train", "test", "video"]:
+                        gt = view.original_image[0:3, :, :]
+                        gt_list.append(gt)
 
-    render_array = torch.stack(render_images_small, dim=0).permute(0, 2, 3, 1)
-    render_array = (render_array*255).clip(0, 255)
-    imageio.mimwrite(os.path.join(model_path, name, "ours_vis_{}".format(iteration), 'ours_video_small_gaussians.mp4'), render_array, fps=30, quality=8)
-
-    render_array = torch.stack(render_images_restored_small, dim=0).permute(0, 2, 3, 1)
-    render_array = (render_array*255).clip(0, 255)
-    imageio.mimwrite(f"{render_restored_path_small}/render_small_gaussians.mp4", render_array, fps=30, quality=8)
-
-    
-    
+        time2=time()
+        print("FPS:",(len(views))*test_times/(time2-time1))
+        # import pdb; pdb.set_trace()
+        
+        
+        render_array = torch.stack(render_images, dim=0).permute(0, 2, 3, 1)
+        render_array = (render_array*255).clip(0, 255)
+        imageio.mimwrite(os.path.join(render_path, f'ours_video_small_gaussians_lookat{lookat_idx}.mp4'), render_array, fps=30, quality=8)
+        
     gt_array = torch.stack(gt_list, dim=0).permute(0, 2, 3, 1)
     gt_array = (gt_array*255).clip(0, 255)
-    imageio.mimwrite(os.path.join(model_path, name, "ours_vis_{}".format(iteration), 'gt_video.mp4'), gt_array, fps=30, quality=8)
+    imageio.mimwrite(os.path.join(render_path, 'gt_video.mp4'), gt_array, fps=30, quality=8)
                     
 
 
