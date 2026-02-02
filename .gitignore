@@ -17,3 +17,4 @@ reconstruct/
 *.so
 data/
 pretrained_gaussians/
+*.ply

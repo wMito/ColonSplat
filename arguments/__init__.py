@@ -101,10 +101,13 @@ class ModelHiddenParams(ParamGroup):
         self.no_dx=False
         self.no_grid=False
         self.no_dx=False
-        self.no_ds=True
-        self.no_dr=True
-        self.no_do=True
+        self.no_ds=False
+        self.no_dr=False
+        self.no_do=False
         self.illumination_embedding_dim = 32
+
+        self.use_deformation_filt = False
+        self.deformation_perc = 0.5
         
         super().__init__(parser, "ModelHiddenParams")
         
@@ -146,10 +149,10 @@ class OptimizationParams(ParamGroup):
         self.weight_decay_iteration = 5000
         self.opacity_reset_interval = 3000
         self.densify_from_iter = 500
-        self.densification_interval = 100
+        self.densification_interval = 500
         self.densify_until_iter = 15_000
         self.pruning_from_iter = 500
-        self.pruning_interval = 100
+        self.pruning_interval = 500
         self.densify_grad_threshold_coarse = 0.0002
         self.densify_grad_threshold_fine_init = 0.0002
         self.densify_grad_threshold_after = 0.0002
@@ -157,9 +160,9 @@ class OptimizationParams(ParamGroup):
         self.opacity_threshold_fine_init = 0.005
         self.opacity_threshold_fine_after = 0.005
         
-        self.pruning_interval_fine=200
+        self.pruning_interval_fine=500
         self.pruning_from_iter_fine=1000
-        self.densification_interval_fine=200
+        self.densification_interval_fine=500
         self.densify_from_iter_fine=1000
         
         self.illumination_embedding_lr: float = 0.001
@@ -170,7 +173,7 @@ class OptimizationParams(ParamGroup):
         self.control_weight = 1e-3
         self.depth_weight=1e-1
         self.tv_weight=1e-2
-        
+        self.knn_weight=1e-2
 
         self.illumination_embedding_regularization: float = 0.0
         super().__init__(parser, "Optimization Parameters")

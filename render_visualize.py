@@ -34,16 +34,22 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
                embedding_idx=-1, illu_type=None, wo_restoration=False):
     render_path = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "renders")
     render_restored_path = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "render_restored")
+    render_path_small = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "renders_small")
+    render_restored_path_small = os.path.join(model_path, name, "ours_vis_{}".format(iteration), "render_restored_small")
 
 
     makedirs(render_path, exist_ok=True)
     makedirs(render_restored_path, exist_ok=True)    
-    
+    makedirs(render_path_small, exist_ok=True)
+    makedirs(render_restored_path_small, exist_ok=True) 
+
     with open(os.path.join(model_path, 'embedding_info.json'), 'r', encoding='utf-8') as file:
         embedding_dict = json.load(file)
     
     render_images = []
     render_images_restored = []
+    render_images_small = []
+    render_images_restored_small = []
     gt_list = []
 
     test_times = 1
@@ -85,10 +91,13 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             
             small_scales = gaussians.get_scaling.clamp_max(gaussians.spatial_lr_scale*0.01)
             time_view = torch.tensor(view.time)
-            rendering = render(view_zero, gaussians, pipeline, background, embedding_idx=embedding_idx, \
+            rendering_small = render(view_zero, gaussians, pipeline, background, embedding_idx=embedding_idx, \
                 embedding=embedding, illu_type=illu_type, time=time_view, override_scales=small_scales)
-            
+            rendering = render(view_zero, gaussians, pipeline, background, embedding_idx=embedding_idx, \
+                embedding=embedding, illu_type=illu_type, time=time_view)
             if i == test_times-1:
+                render_images_small.append(rendering_small["render"].cpu())
+                render_images_restored_small.append(rendering_small["render_restored"].cpu())
                 render_images.append(rendering["render"].cpu())
                 render_images_restored.append(rendering["render_restored"].cpu())
 
@@ -120,15 +129,37 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             torchvision.utils.save_image(image, os.path.join(render_restored_path, '{0:05d}'.format(count) + ".png"))
             count +=1
     
+    count = 0
+    print("writing rendering images small.")
+    if len(render_images_small) != 0:
+        for image in tqdm(render_images_small):
+            torchvision.utils.save_image(image, os.path.join(render_path_small, '{0:05d}'.format(count) + ".png"))
+            count +=1
+            
+    count = 0
+    print("writing rendering images restored small.")
+    if len(render_images_restored_small) != 0:
+        for image in tqdm(render_images_restored_small):
+            torchvision.utils.save_image(image, os.path.join(render_restored_path_small, '{0:05d}'.format(count) + ".png"))
+            count +=1
     
     render_array = torch.stack(render_images, dim=0).permute(0, 2, 3, 1)
     render_array = (render_array*255).clip(0, 255)
-    imageio.mimwrite(os.path.join(model_path, name, "ours_vis_{}".format(iteration), 'ours_video_small_gaussians.mp4'), render_array, fps=30, quality=8)
+    imageio.mimwrite(os.path.join(model_path, name, "ours_vis_{}".format(iteration), 'ours_video_gaussians.mp4'), render_array, fps=30, quality=8)
 
     render_array = torch.stack(render_images_restored, dim=0).permute(0, 2, 3, 1)
     render_array = (render_array*255).clip(0, 255)
-    imageio.mimwrite(f"{render_restored_path}/render_small_gaussians.mp4", render_array, fps=30, quality=8)
+    imageio.mimwrite(f"{render_restored_path}/render_gaussians.mp4", render_array, fps=30, quality=8)
 
+    render_array = torch.stack(render_images_small, dim=0).permute(0, 2, 3, 1)
+    render_array = (render_array*255).clip(0, 255)
+    imageio.mimwrite(os.path.join(model_path, name, "ours_vis_{}".format(iteration), 'ours_video_small_gaussians.mp4'), render_array, fps=30, quality=8)
+
+    render_array = torch.stack(render_images_restored_small, dim=0).permute(0, 2, 3, 1)
+    render_array = (render_array*255).clip(0, 255)
+    imageio.mimwrite(f"{render_restored_path_small}/render_small_gaussians.mp4", render_array, fps=30, quality=8)
+
+    
     
     gt_array = torch.stack(gt_list, dim=0).permute(0, 2, 3, 1)
     gt_array = (gt_array*255).clip(0, 255)

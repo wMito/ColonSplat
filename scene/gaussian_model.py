@@ -24,7 +24,7 @@ from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation, cdist
 from scene.deformation import deform_network
 from scene.regulation import compute_plane_smoothness
-#from cuvs.neighbors import brute_force, ivf_flat
+from cuvs.neighbors import ivf_flat
 
 from gaussian_renderer import render
 from utils.loss_utils import l1_loss
@@ -56,6 +56,8 @@ class GaussianModel:
         self._xyz = torch.empty(0)
         self.args = args
         self._deformation = deform_network(args)
+        self.use_deformation_filt = args.use_deformation_filt
+        self.deformation_perc = args.deformation_perc
 
         self._deformation_table = torch.empty(0)
         # self._features_dc = torch.empty(0)
@@ -157,25 +159,33 @@ class GaussianModel:
     
     @property
     def get_deformation_table(self):
-        k = int(self._deformation_table.shape[0]*0.5)
+        k = int(self._deformation_table.shape[0]*self.deformation_perc)
         topk, _ = torch.topk(self._deformation_table, k)
         threshold = topk[-1]
         out = torch.sigmoid((self._deformation_table - threshold)/0.1)
         return out
 
+    def rerun_knn(self, new_points, k = 100, from_scratch=False):
+        if from_scratch:
+            xyz = self.get_xyz.detach()
+            build_params = ivf_flat.IndexParams(metric="sqeuclidean")
+            self.cuvs_index = ivf_flat.build(build_params, xyz)
+        else:
+            new_idxs = (new_points.shape[0] + torch.arange(self.get_xyz.shape[0], device='cuda'))
+            self.cuvs_index = ivf_flat.extend(self.cuvs_index, new_points.detach(), new_idxs)
+
+        _, indices = ivf_flat.search(ivf_flat.SearchParams(),
+                                     self.cuvs_index, new_points.detach(),
+                                     k)
+        indices = torch.as_tensor(indices, device='cuda')[:, 1:]
+        if from_scratch:
+            self.closest_point_indices = indices
+        else:
+            self.closest_point_indices = torch.cat((self.closest_point_indices, indices), dim=0).cuda()
+
+        #return self.closest_point_indices
     
-    # def find_closest_indices(self, points, n_closest:int=1):
-    #     if not hasattr(self, 'cuvs_index'):
-    #         raise ValueError("cuVS index not initialized")
-        
-    #     # cuVS search returns (distances, indices)
-    #     _, indices = brute_force.search(
-    #         index=self.cuvs_index,
-    #         queries=points.detach().contiguous(),
-    #         k=100+1
-    #     )
-    #     return torch.as_tensor(indices, device='cuda')[:, 1:]
-    
+
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
@@ -219,59 +229,44 @@ class GaussianModel:
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         #self._deformation_table = torch.gt(torch.ones((self.get_xyz.shape[0]),device="cuda"),0)
         self._deformation_table = nn.Parameter(torch.rand((self.get_xyz.shape[0]),device="cuda").requires_grad_(True))
-        #self.original_normals, self.closest_point_indices = self.compute_point_cloud_normals(k=100, create_faiss_index=True)
-        #self.closest_point_indices = self.find_closest_indices(self.get_xyz)
-        # TODO: add loss so based on closest_point_indices it doesnt move other more
+        self.original_normals, self.closest_point_indices = self.compute_point_cloud_normals(k=100)
 
-    # def compute_point_cloud_normals(self, k=10, create_faiss_index=True):
-    #     start = time.time()
-    #     print("Computing normals via cuVS on H100...")
 
-    #     # Ensure xyz is a CuPy array or DLPack-compatible tensor on GPU
-    #     # cuVS works directly with __cuda_array_interface__ (PyTorch/CuPy)
-    #     xyz = self.get_xyz.contiguous().cuda() 
-        
-    #     # 1. Faster k-NN Search using cuVS
-    #     # Instead of manual cdist + topk, use cuVS brute_force search
-    #     # This is optimized specifically for H100 HBM3 bandwidth.
-    #     print("Performing k-NN search...")
-    #     index = brute_force.build(dataset=xyz.detach().contiguous(), metric="sqeuclidean")
-    #     distances, indices = brute_force.search(
-    #         index=index,
-    #         queries=xyz.detach().contiguous(),
-    #         k=k+1
-    #     )
-        
-    #     # Remove self-match (the 0th neighbor)
-    #     k_neighbors_indices = torch.as_tensor(indices, device='cuda' )[:, 1:]
-        
-    #     # 2. Vectorized Normal Computation (PCA)
-    #     # Avoid the chunked loop if your VRAM allows; H100 has 80GB!
-    #     # If it's too big, keep the chunking but keep logic in Torch.
-        
-    #     # Reshape xyz into the neighborhood structure
-    #     # [N, k, 3]
-    #     neighbors = xyz[k_neighbors_indices.long()]
-        
-    #     # Optimized PCA via torch
-    #     neighbors = xyz[k_neighbors_indices] # [N, k, 3]
-    #     neighbors_centered = neighbors - neighbors.mean(dim=1, keepdim=True)
-        
-    #     # Covariance and Eigen-decomposition
-    #     covariance = torch.matmul(neighbors_centered.transpose(-2, -1), neighbors_centered) / (k - 1)
-    #     _, eigenvectors = torch.linalg.eigh(covariance)
-        
-    #     # The normal is the eigenvector corresponding to the smallest eigenvalue
-    #     normals = eigenvectors[..., 0]
-    #     normals_normalized = torch.nn.functional.normalize(normals, dim=1, eps=1e-8)
-        
-    #     all_normals = torch.cat((xyz, normals_normalized), dim=1)
 
-    #     if create_faiss_index:
-    #         # We store the cuVS index instead of Faiss for the H100 speedup
-    #         self.cuvs_index = index 
+    def compute_point_cloud_normals(self, k=10):
+        start = time.time()
+
+        xyz = self.get_xyz.contiguous().cuda().detach()
+        
+        print("Performing k-NN search...")
+        start = time.time()
+        build_params = ivf_flat.IndexParams(metric="sqeuclidean")
+        index = ivf_flat.build(build_params, xyz)
+        distances, indices = ivf_flat.search(ivf_flat.SearchParams(),
+                                       index, xyz,
+                                       k)
+        end = time.time()
+        print(f"k-NN search completed in {end - start:.2f} seconds.")
+
+        
+        k_neighbors_indices = torch.as_tensor(indices, device='cuda' )[:, 1:]
+        
+        # neighbors = xyz[k_neighbors_indices.long()]
+
+        # neighbors = xyz[k_neighbors_indices] # [N, k, 3]
+        # neighbors_centered = neighbors - neighbors.mean(dim=1, keepdim=True)
+        
+        # covariance = torch.matmul(neighbors_centered.transpose(-2, -1), neighbors_centered) / (k - 1)
+        # _, eigenvectors = torch.linalg.eigh(covariance)
+
+        # normals = eigenvectors[..., 0]
+        # normals_normalized = torch.nn.functional.normalize(normals, dim=1, eps=1e-8)
+        
+        # all_normals = torch.cat((xyz, normals_normalized), dim=1)
+        all_normals = None
+        self.cuvs_index = index 
             
-    #     return all_normals, k_neighbors_indices
+        return all_normals, k_neighbors_indices
 
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
@@ -416,6 +411,8 @@ class GaussianModel:
         
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         
+        if os.path.exists(os.path.join(path, "closest_point_indices.pth")):
+            self.closest_point_indices = torch.load(os.path.join(path,"closest_point_indices.pth"),map_location="cuda")
         
         self.illumination_embeddings = torch.load(os.path.join(path,"embedding.pth"),map_location="cuda")
 
@@ -424,6 +421,7 @@ class GaussianModel:
         torch.save(self._deformation.state_dict(),os.path.join(path, "deformation.pth"))
         torch.save(self._deformation_table,os.path.join(path, "deformation_table.pth"))
         torch.save(self._deformation_accum,os.path.join(path, "deformation_accum.pth"))
+        torch.save(self.closest_point_indices,os.path.join(path, "closest_point_indices.pth"))
 
         
     def save_embedding(self, path):
@@ -616,6 +614,9 @@ class GaussianModel:
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         # if new_xyz.shape[0]>0:
+        #     self.rerun_knn(new_xyz, k=100)
+
+        # if new_xyz.shape[0]>0:
         #     new_closest_point_indices = self.find_closest_indices(new_xyz)
         #     self.closest_point_indices = torch.cat((self.closest_point_indices, new_closest_point_indices), dim=0)
 
@@ -672,6 +673,7 @@ class GaussianModel:
             big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
         self.prune_points(prune_mask)
+        self.rerun_knn(self.get_xyz, k=100, from_scratch=True)
         torch.cuda.empty_cache()
 
     def densify(self, max_grad, min_opacity, extent, max_screen_size):

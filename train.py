@@ -120,6 +120,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         radii_list = []
         visibility_filter_list = []
         viewspace_point_tensor_list = []
+        transformed_means_list = []
         
         for viewpoint_cam in viewpoint_cams:
             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage)
@@ -133,6 +134,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                 mask = mask.cuda()
             
             image_concealing = render_pkg['render_restored']
+            transformed_means_list.append(transformed_means)
             images_concealing.append(image_concealing.unsqueeze(0))
             images.append(image.unsqueeze(0))
             if depth.ndim == 2:
@@ -154,6 +156,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         rendered_depths = torch.cat(depths, 0)
         gt_images = torch.cat(gt_images,0)
         gt_depths = torch.cat(gt_depths, 0)
+        transformed_means = torch.cat(transformed_means_list, 0)
         images_concealing = torch.cat(images_concealing, 0)
         if mask:
             masks = torch.cat(masks, 0)
@@ -181,23 +184,23 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         # print('gt', gt_depths.shape)
 
 
-        # idx = gaussians.closest_point_indices
-        # K = int(idx.max().item()) + 1
+        idx = gaussians.closest_point_indices
+        K = int(idx.max().item()) + 1
 
-        # cluster_pts = transformed_means[idx]
-        # cluster_means = cluster_pts.mean(dim=1)
-        # center_points = transformed_means[torch.arange(cluster_means.shape[0], device=cluster_means.device)]
-        # per_point_sq_dist = ((center_points - cluster_means) ** 2).sum(dim=1)
+        cluster_pts = transformed_means[idx]
+        cluster_means = cluster_pts.mean(dim=1)
+        center_points = transformed_means[torch.arange(cluster_means.shape[0], device=cluster_means.device)]
+        per_point_sq_dist = ((center_points - cluster_means) ** 2).sum(dim=1)
 
 
         # # add to total loss with a weight (tune weight)
-        # loss_clusters = 0.001 * per_point_sq_dist.mean()
+        loss_clusters = opt.knn_weight * per_point_sq_dist.mean()
 
         depth_tvloss = TV_loss(rendered_depths)
         img_tvloss = TV_loss(rendered_images)
         tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
         
-        loss = Ll1 + depth_loss + tv_loss #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
+        loss = Ll1 + depth_loss + tv_loss + loss_clusters #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
         
         
         # out_save_dep = rendered_depths.squeeze(0).permute(1,2,0).detach().cpu().numpy()
