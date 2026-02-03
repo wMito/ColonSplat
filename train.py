@@ -32,6 +32,7 @@ from utils import helper
 from utils.resnet_swag import content_loss
 from torchvision import transforms, models
 
+from utils.arap_utils import arap_loss
 
 import lpips
 from utils.scene_utils import render_training_image
@@ -199,9 +200,26 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         depth_tvloss = TV_loss(rendered_depths)
         img_tvloss = TV_loss(rendered_images)
         tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
+
+        # tensors you already have
+        xyz_init = gaussians.get_xyz    # (N,3)
+        xyz_def = transformed_means         # (N,3)
+
+        geom_arap, rot_arap = arap_loss(
+            xyz_init=xyz_init,
+            xyz_target=xyz_def,
+            idx=idx,
+            rot_init=None,          # optional
+            rot_target=None,        # optional
+            with_rot=True,
+            adaptive_weight=True
+        )
+
+        loss_arap = 0.01*geom_arap + 0.01*rot_arap
+
         
-        loss = Ll1 + depth_loss + tv_loss + loss_clusters #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
-        
+        # loss = Ll1 + depth_loss + tv_loss + loss_clusters #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
+        loss = Ll1 + depth_loss + tv_loss + loss_arap
         
         # out_save_dep = rendered_depths.squeeze(0).permute(1,2,0).detach().cpu().numpy()
         # out_save_dep = np.clip(out_save_dep/(out_save_dep.max()+1e-6), 0, 1)
