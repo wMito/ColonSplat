@@ -208,14 +208,12 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         geom_arap, rot_arap = arap_loss(
             xyz_init=xyz_init,
             xyz_target=xyz_def,
-            idx=idx,
             rot_init=None,          # optional
             rot_target=None,        # optional
-            with_rot=True,
-            adaptive_weight=True
+            with_rot=False
         )
 
-        loss_arap = 0.01*geom_arap + 0.01*rot_arap
+        loss_arap = 0.01*geom_arap #+ 0.01*rot_arap
 
         
         # loss = Ll1 + depth_loss + tv_loss + loss_clusters #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc

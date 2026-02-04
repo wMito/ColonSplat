@@ -1,131 +1,127 @@
 import torch
+import pytorch3d.ops
 
 
-# ------------------ Quaternion ------------------
+# ---------------- Quaternion ----------------
 
 def quaternion_to_matrix(quaternions: torch.Tensor) -> torch.Tensor:
-    """
-    quaternions: (N,4) in (w, x, y, z) or (r,i,j,k) format
-    returns: (N,3,3)
-    """
     r, i, j, k = torch.unbind(quaternions, -1)
     two_s = 2.0 / (quaternions * quaternions).sum(-1).clamp_min(1e-12)
-
-    o = torch.stack(
-        (
-            1 - two_s * (j * j + k * k),
-            two_s * (i * j - k * r),
-            two_s * (i * k + j * r),
-            two_s * (i * j + k * r),
-            1 - two_s * (i * i + k * k),
-            two_s * (j * k - i * r),
-            two_s * (i * k - j * r),
-            two_s * (j * k + i * r),
-            1 - two_s * (i * i + j * j),
-        ),
-        -1,
-    )
+    o = torch.stack((
+        1 - two_s * (j * j + k * k),
+        two_s * (i * j - k * r),
+        two_s * (i * k + j * r),
+        two_s * (i * j + k * r),
+        1 - two_s * (i * i + k * k),
+        two_s * (j * k - i * r),
+        two_s * (i * k - j * r),
+        two_s * (j * k + i * r),
+        1 - two_s * (i * i + j * j),
+    ), -1)
     return o.reshape(quaternions.shape[:-1] + (3, 3))
 
 
-# ------------------ Edge Construction ------------------
+# ---------------- Connectivity (same logic as SC-GS) ----------------
 
-def build_edge_matrices(xyz: torch.Tensor, idx: torch.Tensor):
+def cal_connectivity_from_points(points, radius, K, least_edge_num=3, adaptive_weighting=True):
     """
-    xyz: (N,3)
-    idx: (N,K) neighbor indices
-    Returns P: (N,K,3) where P[i,k] = xi - xj
+    points: (N,3)
+    returns: ii, jj, nn, weight
     """
-    return xyz[:, None, :] - xyz[idx]
+    Nv = points.shape[0]
+    device = points.device
 
+    knn_res = pytorch3d.ops.knn_points(points[None], points[None], None, None, K=K+1)
+    nn_dist = knn_res.dists[0, :, 1:]   # remove self
+    nn_idx  = knn_res.idx[0, :, 1:]
 
-# ------------------ Weights ------------------
+    # radius cutoff
+    nn_idx[:, least_edge_num:] = torch.where(
+        nn_dist[:, least_edge_num:] < radius ** 2,
+        nn_idx[:, least_edge_num:],
+        -torch.ones_like(nn_idx[:, least_edge_num:])
+    )
 
-def compute_edge_weights(P: torch.Tensor, adaptive=True):
-    """
-    P: (N,K,3) edge vectors from init shape
-    returns weight (N,K)
-    """
-    N, K, _ = P.shape
-    device = P.device
+    nn_dist[:, least_edge_num:] = torch.where(
+        nn_dist[:, least_edge_num:] < radius ** 2,
+        nn_dist[:, least_edge_num:],
+        torch.ones_like(nn_dist[:, least_edge_num:]) * torch.inf
+    )
 
-    if adaptive:
-        dist2 = (P ** 2).sum(-1)  # (N,K)
-        mean_dist = dist2[dist2 > 0].mean().clamp_min(1e-12)
-        weight = torch.exp(-dist2 / mean_dist)
-        weight = weight / weight.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+    if adaptive_weighting:
+        nn_dist_1d = nn_dist.reshape(-1)
+        mean_dist = nn_dist_1d[~torch.isinf(nn_dist_1d)].mean().clamp_min(1e-12)
+        weight = torch.exp(-nn_dist / mean_dist)
     else:
-        weight = torch.ones((N, K), device=device) / K
+        weight = torch.exp(-nn_dist)
 
-    return weight
+    weight = weight / weight.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+
+    ii = torch.arange(Nv, device=device)[:, None].expand(Nv, K).reshape(-1)
+    jj = nn_idx.reshape(-1)
+    nn = torch.arange(K, device=device)[None].expand(Nv, K).reshape(-1)
+
+    mask = jj != -1
+    return ii[mask], jj[mask], nn[mask], weight
 
 
-# ------------------ Rotation Solve (Procrustes) ------------------
+# ---------------- Edge Matrix ----------------
 
-def solve_rotations(P: torch.Tensor, P_prime: torch.Tensor, weight: torch.Tensor):
-    """
-    Solves per-point optimal rotation Ri
-    """
+def produce_edge_matrix_nfmt(verts, edge_shape, ii, jj, nn):
+    E = torch.zeros(edge_shape, device=verts.device)
+    E[ii, nn] = verts[ii] - verts[jj]
+    return E
+
+
+# ---------------- Rotation Solve ----------------
+
+def solve_rotations(P, P_prime, weight):
     with torch.no_grad():
-        D = torch.diag_embed(weight)                  # (N,K,K)
-        S = torch.bmm(P.transpose(1, 2), torch.bmm(D, P_prime))  # (N,3,3)
-
+        D = torch.diag_embed(weight)
+        S = torch.bmm(P.permute(0, 2, 1), torch.bmm(D, P_prime))
         U, sig, Vh = torch.linalg.svd(S)
-        R = torch.bmm(Vh, U.transpose(1, 2))
+        R = torch.bmm(Vh, U.permute(0, 2, 1))
 
-        # Reflection fix
         det = torch.det(R)
         mask = det <= 0
         if mask.any():
             U2 = U.clone()
             U2[mask, :, -1] *= -1
-            R[mask] = torch.bmm(Vh[mask], U2[mask].transpose(1, 2))
-
+            R[mask] = torch.bmm(Vh[mask], U2[mask].permute(0, 2, 1))
     return R
 
 
-# ------------------ ARAP Geometry ------------------
-
-def arap_geometry_loss(xyz_init, xyz_target, idx, adaptive_weight=True):
-    P       = build_edge_matrices(xyz_init, idx)
-    P_prime = build_edge_matrices(xyz_target, idx)
-
-    weight = compute_edge_weights(P, adaptive_weight)
-
-    R = solve_rotations(P, P_prime, weight)
-
-    RP = torch.einsum("nij,nkj->nki", R, P)
-    arap_error = (weight[..., None] * (P_prime - RP)).square().mean()
-
-    return arap_error, R
-
-
-# ------------------ Rotation Supervision ------------------
-
-def arap_rotation_loss(R, rot_init, rot_target):
-    init_R = quaternion_to_matrix(rot_init)
-    tar_R  = quaternion_to_matrix(rot_target)
-    R_pred = torch.bmm(R, init_R)
-    return (R_pred - tar_R).square().mean()
-
-
-# ------------------ Full ARAP Loss ------------------
+# ---------------- ARAP Loss ----------------
 
 def arap_loss(
     xyz_init,
     xyz_target,
-    idx,
     rot_init=None,
     rot_target=None,
-    with_rot=True,
-    adaptive_weight=True,
-    rot_weight=1e2
+    K=50,
+    with_rot=True
 ):
-    geom, R = arap_geometry_loss(xyz_init, xyz_target, idx, adaptive_weight)
+    N = xyz_init.shape[0]
+    radius = torch.linalg.norm(xyz_init.max(0).values - xyz_init.min(0).values) / 8
 
-    if with_rot and (rot_init is not None) and (rot_target is not None):
-        rot = arap_rotation_loss(R, rot_init, rot_target) * rot_weight
+    with torch.no_grad():
+        ii, jj, nn, weight = cal_connectivity_from_points(xyz_init, radius, K)
+
+    P       = produce_edge_matrix_nfmt(xyz_init,  (N, K, 3), ii, jj, nn)
+    P_prime = produce_edge_matrix_nfmt(xyz_target,(N, K, 3), ii, jj, nn)
+
+    R = solve_rotations(P, P_prime, weight)
+
+    arap_error = (weight[..., None] *
+                  (P_prime - torch.einsum('bxy,bky->bkx', R, P))
+                 ).square().mean()
+
+    if with_rot and rot_init is not None and rot_target is not None:
+        init_R = quaternion_to_matrix(rot_init)
+        tar_R  = quaternion_to_matrix(rot_target)
+        R_rot = torch.bmm(R, init_R)
+        rot_error = (R_rot - tar_R).square().mean() * 1e2
     else:
-        rot = xyz_init.new_tensor(0.0)
+        rot_error = xyz_init.new_tensor(0.)
 
-    return geom, rot
+    return arap_error, rot_error
