@@ -8,7 +8,7 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-
+import torchvision
 import numpy as np
 import random
 import os
@@ -122,12 +122,18 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         visibility_filter_list = []
         viewspace_point_tensor_list = []
         transformed_means_list = []
+        transformed_rotations_list =[]
+        transformed_scales_list =[]
         
         for viewpoint_cam in viewpoint_cams:
             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage)
-            image, depth, viewspace_point_tensor, visibility_filter, radii, transformed_means = \
+            image, depth, viewspace_point_tensor, visibility_filter, radii, transformed_means, \
+                transformed_rotations, transformed_scales, dcol = \
                 render_pkg["render"], render_pkg["depth"], render_pkg["viewspace_points"], \
-                    render_pkg["visibility_filter"], render_pkg["radii"], render_pkg["transformed_points"]
+                    render_pkg["visibility_filter"], render_pkg["radii"], \
+                        render_pkg["transformed_points"], render_pkg["transformed_rotations"], \
+                            render_pkg["transformed_scales"], render_pkg["dcol"]
+                        
             gt_image = viewpoint_cam.original_image.cuda().float()
             gt_depth = viewpoint_cam.original_depth.cuda().float()
             mask = viewpoint_cam.mask
@@ -136,6 +142,8 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             
             image_concealing = render_pkg['render_restored']
             transformed_means_list.append(transformed_means)
+            transformed_rotations_list.append(transformed_rotations)
+            transformed_scales_list.append(transformed_scales)
             images_concealing.append(image_concealing.unsqueeze(0))
             images.append(image.unsqueeze(0))
             if depth.ndim == 2:
@@ -158,6 +166,8 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         gt_images = torch.cat(gt_images,0)
         gt_depths = torch.cat(gt_depths, 0)
         transformed_means = torch.cat(transformed_means_list, 0)
+        transformed_rotations = torch.cat(transformed_rotations_list, 0)
+        transformed_scales = torch.cat(transformed_scales_list, 0)
         images_concealing = torch.cat(images_concealing, 0)
         if mask:
             masks = torch.cat(masks, 0)
@@ -184,7 +194,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         # print('depths', rendered_depths.shape)
         # print('gt', gt_depths.shape)
 
-
+        ## XYZ CLUSTER LOSS
         idx = gaussians.closest_point_indices
         K = int(idx.max().item()) + 1
 
@@ -193,31 +203,38 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         center_points = transformed_means[torch.arange(cluster_means.shape[0], device=cluster_means.device)]
         per_point_sq_dist = ((center_points - cluster_means) ** 2).sum(dim=1)
 
-
-        # # add to total loss with a weight (tune weight)
         loss_clusters = opt.knn_weight * per_point_sq_dist.mean()
 
+        # # ## ROT CLUSTER LOSS
+        # dir_pp_camera = (transformed_means - viewpoint_cam.camera_center.repeat(transformed_means.shape[0], 1).cuda())
+        # transformed_normals = gaussians.get_gaussian_normal(transformed_rotations,transformed_scales, view_dir = dir_pp_camera)
+
+        # render_tmp = render(viewpoint_cam, gaussians, pipe, background, stage=stage, override_color=(transformed_normals+1/2))
+        # render_tmp["render"]
+        # rendering = render_tmp["render"].clamp(0,1)
+        # torchvision.utils.save_image(rendering, os.path.join("/home/jk/colon_dynamic/thrash", 'normal_iter.png'))
+        
+
+        # cluster_q = transformed_normals[idx]                         # (N, K, 4)
+        # cluster_q_mean = cluster_q.mean(dim=1)     # (N,4)
+        # cluster_q_mean = cluster_q_mean / (cluster_q_mean.norm(dim=-1, keepdim=True) + 1e-8)
+
+        # center_q = transformed_normals[torch.arange(cluster_q_mean.shape[0], device=transformed_normals.device)]
+
+        # dot = torch.sum(center_q * cluster_q_mean, dim=-1).abs().clamp(max=1.0)
+        # rot_dist = 1.0 - dot
+
+        # loss_rot_smooth = opt.knn_weight * rot_dist.mean()/5
+
+        ### MINIMIZE COLOR CHANGE
+        loss_dcol = torch.mean(dcol ** 2)*opt.dcol_weight
+
+        ### OTHER LOSSES
         depth_tvloss = TV_loss(rendered_depths)
         img_tvloss = TV_loss(rendered_images)
         tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
 
-        # tensors you already have
-        xyz_init = gaussians.get_xyz    # (N,3)
-        xyz_def = transformed_means         # (N,3)
-
-        geom_arap, rot_arap = arap_loss(
-            xyz_init=xyz_init,
-            xyz_target=xyz_def,
-            rot_init=None,          # optional
-            rot_target=None,        # optional
-            with_rot=False
-        )
-
-        loss_arap = 0.01*geom_arap #+ 0.01*rot_arap
-
-        
-        # loss = Ll1 + depth_loss + tv_loss + loss_clusters #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
-        loss = Ll1 + depth_loss + tv_loss + loss_arap
+        loss = Ll1 + depth_loss + tv_loss + loss_clusters +loss_dcol #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
         
         # out_save_dep = rendered_depths.squeeze(0).permute(1,2,0).detach().cpu().numpy()
         # out_save_dep = np.clip(out_save_dep/(out_save_dep.max()+1e-6), 0, 1)

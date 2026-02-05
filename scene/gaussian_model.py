@@ -30,7 +30,7 @@ from gaussian_renderer import render
 from utils.loss_utils import l1_loss
 from tqdm import tqdm
 import time
-
+from gaussian_norms import compute_gauss_norm
 
 class GaussianModel:
 
@@ -48,7 +48,7 @@ class GaussianModel:
         self.inverse_opacity_activation = inverse_sigmoid
         self.rotation_activation = torch.nn.functional.normalize
         self.faiss_index = None
-        
+        self.games_flatten_axis = 2
 
     def __init__(self, sh_degree : int, args):
         self.active_sh_degree = 0
@@ -164,6 +164,23 @@ class GaussianModel:
         threshold = topk[-1]
         out = torch.sigmoid((self._deformation_table - threshold)/0.1)
         return out
+
+    def get_gaussian_normal(self, q, s, view_dir = None):
+        """
+        Compute the normal of the 3D Gaussian and orient it towards camera.
+        """
+        input_rotation_normalized = q / q.norm(p=2, dim=1, keepdim=True)
+        cuda_normal = compute_gauss_norm(s, input_rotation_normalized, 1.0) #1.0 scale modifier
+        N = torch.nn.functional.normalize(cuda_normal, dim=1) 
+        
+        if view_dir is not None:
+            V = -torch.nn.functional.normalize(view_dir, dim=1)
+            
+            # normals always towards camera
+            N_dot_V = torch.sum(N * V, dim=1, keepdim=True)  # [N, 1]
+            N = torch.where(N_dot_V < 0, -N, N)  # Flip N if N_dot_V < 0
+
+        return N
 
     def rerun_knn(self, new_points, k = 100, from_scratch=False):
         if from_scratch:

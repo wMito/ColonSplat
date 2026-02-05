@@ -5,5 +5,8 @@
 # python render.py --model_path output/stereomis/P1_1 --skip_video --skip_test --configs arguments/stereomis/P1_1.py
 # python render.py --model_path output/stereomis/P1_2 --skip_video --skip_test --configs arguments/stereomis/P1_2.py
 
-python render_visualize.py -s data/c1_ascending_t4_v4  --model_path output/deleted_losses_c1 --skip_video --skip_train --mode monocular --eval
+python render.py -s data/c1_ascending_t4_v4  --model_path output/debug_rotcol --skip_video --skip_train --mode monocular --eval --no_ds --no_do
+python metrics.py --model_path output/debug_rotcol
+python render_visualize.py -s data/c1_ascending_t4_v4  --model_path output/debug_rotcol --skip_video --skip_train --mode monocular --eval --no_ds --no_do
+
 

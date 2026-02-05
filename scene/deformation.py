@@ -32,6 +32,8 @@ class Deformation(nn.Module):
         self.scales_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 3))
         self.rotations_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 4))
         self.opacity_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 1))
+        self.color_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 3))
+
         
         for name, param in self.feature_out.named_parameters():
             if 'weight' in name:
@@ -58,18 +60,18 @@ class Deformation(nn.Module):
         h = self.feature_out(h)
         return h
 
-    def forward(self, rays_pts_emb, scales_emb=None, rotations_emb=None, opacity = None, time_emb=None):
+    def forward(self, rays_pts_emb, scales_emb=None, rotations_emb=None, opacity = None, color_emb = None, time_emb=None):
         if time_emb is None:
             return self.forward_static(rays_pts_emb[:,:3])
         else:
-            return self.forward_dynamic(rays_pts_emb, scales_emb, rotations_emb, opacity, time_emb)
+            return self.forward_dynamic(rays_pts_emb, scales_emb, rotations_emb, opacity, color_emb, time_emb)
 
     def forward_static(self, rays_pts_emb):
         grid_feature = self.grid(rays_pts_emb[:,:3])
         dx = self.static_mlp(grid_feature)
         return rays_pts_emb[:, :3] + dx
 
-    def forward_dynamic(self,rays_pts_emb, scales_emb, rotations_emb, opacity_emb, time_emb):
+    def forward_dynamic(self,rays_pts_emb, scales_emb, rotations_emb, opacity_emb, color_emb, time_emb):
         hidden = self.query_time(rays_pts_emb, time_emb).float()
         
         if self.args.no_dx:
@@ -95,8 +97,14 @@ class Deformation(nn.Module):
         else:
             do = self.opacity_deform(hidden) 
             opacity = opacity_emb[:,:1] + do
+        
+        if self.args.no_dcol:
+            color = color_emb[:,:3] 
+        else:
+            dcol = self.color_deform(hidden) 
+            color = color_emb[:,:3] * (1-dcol)
 
-        return pts, scales, rotations, opacity
+        return pts, scales, rotations, opacity, (color, dcol)
     
     def get_mlp_parameters(self):
         parameter_list = []
@@ -133,9 +141,9 @@ class deform_network(nn.Module):
         self.register_buffer('opacity_poc', torch.FloatTensor([(2**i) for i in range(opacity_pe)]))
         self.apply(initialize_weights)
     
-    def forward(self, point, scales=None, rotations=None, opacity=None, times_sel=None):
+    def forward(self, point, scales=None, rotations=None, opacity=None, colors = None, times_sel=None):
         if times_sel is not None:
-            return self.forward_dynamic(point, scales, rotations, opacity, times_sel)
+            return self.forward_dynamic(point, scales, rotations, opacity, colors, times_sel)
         else:
             return self.forward_static(point)
         
@@ -143,14 +151,15 @@ class deform_network(nn.Module):
         points = self.deformation_net(points)
         return points
 
-    def forward_dynamic(self, point, scales=None, rotations=None, opacity=None, times_sel=None):
+    def forward_dynamic(self, point, scales=None, rotations=None, opacity=None, colors=None, times_sel=None):
         # times_emb = poc_fre(times_sel, self.time_poc)
-        means3D, scales, rotations, opacity = self.deformation_net( point,
+        means3D, scales, rotations, opacity, colors = self.deformation_net( point,
                                                 scales,
                                                 rotations,
                                                 opacity,
+                                                colors,
                                                 times_sel)
-        return means3D, scales, rotations, opacity
+        return means3D, scales, rotations, opacity, colors
     
     def get_mlp_parameters(self):
         return self.deformation_net.get_mlp_parameters() + list(self.timenet.parameters())

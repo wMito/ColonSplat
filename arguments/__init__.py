@@ -104,6 +104,7 @@ class ModelHiddenParams(ParamGroup):
         self.no_ds=False
         self.no_dr=False
         self.no_do=False
+        self.no_dcol = False
         self.illumination_embedding_dim = 32
 
         self.use_deformation_filt = False
@@ -174,6 +175,7 @@ class OptimizationParams(ParamGroup):
         self.depth_weight=1e-1
         self.tv_weight=1e-2
         self.knn_weight=1e-2
+        self.dcol_weight=10.0
 
         self.illumination_embedding_regularization: float = 0.0
         super().__init__(parser, "Optimization Parameters")

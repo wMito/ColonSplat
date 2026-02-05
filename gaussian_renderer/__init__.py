@@ -79,11 +79,16 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     if pc.use_deformation_filt:
         deformation_point = pc.get_deformation_table > 0.3
     
+    shs = None
+    colors_precomp = pc.features
+    
     if stage == "coarse" :
-        means3D_final, scales_final, rotations_final, opacity_final = means3D, scales, rotations, opacity
+        means3D_final, scales_final, rotations_final, opacity_final, color_final, dcol = means3D, scales, rotations, opacity, colors_precomp, colors_precomp*0 #hack to return 0 instead of "dcol"
         
     else:
         if pc.use_deformation_filt:
+            raise NotImplemented
+            # add delta color 
             means3D_deform, scales_deform, rotations_deform, opacity_deform = pc._deformation(means3D[deformation_point], scales[deformation_point], 
                                                                             rotations[deformation_point], opacity[deformation_point],
                                                                             time[deformation_point])
@@ -100,9 +105,8 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             scales_final[~deformation_point] = scales[~deformation_point]
             opacity_final[~deformation_point] = opacity[~deformation_point]
         else:
-            means3D_final, scales_final, rotations_final, opacity_final = pc._deformation(means3D, scales, 
-                                                                            rotations, opacity,
-                                                                            time)
+            means3D_final, scales_final, rotations_final, opacity_final, (color_final, dcol) = pc._deformation(means3D, scales, 
+                                                                            rotations, opacity, colors_precomp, time)
     # print(time.max())
     # with torch.no_grad():
     #     pc._deformation_accum[deformation_point] += torch.abs(means3D_deform - means3D[deformation_point])
@@ -115,23 +119,19 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         scales_final = override_scales
     rotations_final = pc.rotation_activation(rotations_final)
     opacity = pc.opacity_activation(opacity_final)
-
-    shs = None
-    colors_precomp = pc.features
-    
         
    
     if show_clusters:
         scales_all = scales_final.clone()
-        colors_precomp = torch.ones_like(colors_precomp).to('cuda')
+        color_final = torch.ones_like(color_final).to('cuda')
         scales_final = scales_final.clamp_max(pc.spatial_lr_scale*0.01)
-        colors_precomp[pc.closest_point_indices[50000]] = torch.tensor([1, 0, 0.]).to('cuda')
+        color_final[pc.closest_point_indices[50000]] = torch.tensor([1, 0, 0.]).to('cuda')
         opacity[pc.closest_point_indices[50000]] = 1.
         scales_final[pc.closest_point_indices[50000]] = scales_all[pc.closest_point_indices[50000]] 
-        colors_precomp[pc.closest_point_indices[20000]] = torch.tensor([0, 1, 0.]).to('cuda')
+        color_final[pc.closest_point_indices[20000]] = torch.tensor([0, 1, 0.]).to('cuda')
         opacity[pc.closest_point_indices[20000]] = 1.
         scales_final[pc.closest_point_indices[20000]] = scales_all[pc.closest_point_indices[20000]]
-        colors_precomp[pc.closest_point_indices[100]] = torch.tensor([0, 0, 1.]).to('cuda')
+        color_final[pc.closest_point_indices[100]] = torch.tensor([0, 0, 1.]).to('cuda')
         opacity[pc.closest_point_indices[100]] = 1.
         scales_final[pc.closest_point_indices[100]] = scales_all[pc.closest_point_indices[100]]
         # for i in [0, 10, 20, 30, 40, 50]:
@@ -139,13 +139,22 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         #     opacity[pc.closest_point_indices[i]] = 1.0
 
     
+    #scale clamping for games
+    eps_s0 = 10e-6
+    keep_axes = [i for i in range(3) if i != pc.games_flatten_axis]
+    s0 = torch.ones(pc._scaling.shape[0], 1).cuda() * eps_s0
+    scales_final_flat = torch.cat([scales_final[:, keep_axes], s0], dim=1)
+
+    if override_color is not None:
+        color_final = override_color
+
     rendered_image, radii, depth = rasterizer(
         means3D = means3D_final,
         means2D = means2D,
         shs = None, #shs*pc.get_concealing[:, None, :]
-        colors_precomp = colors_precomp,
+        colors_precomp = color_final,
         opacities = opacity,
-        scales = scales_final,
+        scales = scales_final_flat,
         rotations = rotations_final,
         cov3D_precomp = cov3D_precomp)
 
@@ -174,5 +183,8 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
             "radii": radii,
-            "transformed_points": means3D_final}
+            "transformed_points": means3D_final,
+            "transformed_rotations": rotations_final,
+            "transformed_scales": scales_final_flat,
+            "dcol": dcol}
 

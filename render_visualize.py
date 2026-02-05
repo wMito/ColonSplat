@@ -95,7 +95,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
                         illu_type = 'low_light' if "cutting" in model_path else 'over_exposure' #pulling
                         time_view=None
                 
-                small_scales = gaussians.get_scaling.clamp_max(0.05) #gaussians.spatial_lr_scale*1.0)
+                small_scales = None #gaussians.get_scaling.clamp_max(gaussians.spatial_lr_scale*1.0)
                 time_view = torch.tensor(view.time)
                 rendering = render(view_zero, gaussians, pipeline, background, embedding_idx=embedding_idx, \
                     embedding=embedding, illu_type=illu_type, time=time_view, override_scales=small_scales, \
