@@ -101,8 +101,8 @@ class Deformation(nn.Module):
         if self.args.no_dcol:
             color = color_emb[:,:3] 
         else:
-            dcol = self.color_deform(hidden) 
-            color = color_emb[:,:3] * (1-dcol)
+            dcol = self.color_deform(hidden).clamp_min(0.0) #dcol only >0, later in training we also penalizetoo large values to encourage model to explain changes by xyz motion
+            color = color_emb[:,:3] * (1+dcol)
 
         return pts, scales, rotations, opacity, (color, dcol)
     
