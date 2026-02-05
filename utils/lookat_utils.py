@@ -6,6 +6,23 @@ from tqdm import tqdm
 import math
 import numpy as np
 
+def fibonacci_sphere(n):
+    points = []
+    golden_angle = np.pi * (3 - np.sqrt(5))  # ~2.399963
+
+    for i in range(n):
+        y = 1 - (i / (n - 1)) * 2        # y goes 1 → -1
+        radius = np.sqrt(1 - y * y)
+
+        theta = golden_angle * i
+
+        x = np.cos(theta) * radius
+        z = np.sin(theta) * radius
+
+        points.append(np.array([x, y, z]))
+
+    return points
+
 
 def position_cam(object_center, direction, radius):
     direction = direction / np.linalg.norm(direction)
@@ -32,11 +49,11 @@ def generateLookAtCams(xyz, pattern_camera, radius, n_directions = 10, up_dir = 
 
     raster_settings_cam_list =[]
     n_cam=0
-    np.random.seed(420420)
+    directions = fibonacci_sphere(n_directions)
     # for n_cam in tqdm(range(N_cameras), desc="Generating LookAt cameras"):
     for i_dir in tqdm(range(n_directions), desc="Generating LookAt cameras"):
         
-        random_direction = np.random.uniform(-1, 1, 3)
+        random_direction = directions[i_dir]
         cam_position = position_cam(object_center, random_direction, radius*1.5)
 
         ## Needed in gs3, not sure why they scaled Field of View 

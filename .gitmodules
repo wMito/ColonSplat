@@ -7,9 +7,16 @@
 [submodule "submodules/depth_anything"]
 	path = submodules/depth_anything
 	url = https://github.com/fabio-sim/Depth-Anything-ONNX.git
+	
+# [submodule "submodules/diff-gaussian-rasterization-depth"]
+# 	path = submodules/diff-gaussian-rasterization-depth
+# 	url = https://github.com/leo-frank/diff-gaussian-rasterization-depth
+
+#we use rasterizer from prendo:
+[submodule "submodules/depth-diff-gaussian-rasterization"]
+	path = submodules/depth-diff-gaussian-rasterization
+	url = https://github.com/ingra14m/depth-diff-gaussian-rasterization
+	branch = depth
 [submodule "submodules/diff-gaussian-rasterization-depth"]
 	path = submodules/diff-gaussian-rasterization-depth
 	url = https://github.com/leo-frank/diff-gaussian-rasterization-depth
-
-#we use rasterizer from prendo:
-# git clone https://github.com/ingra14m/depth-diff-gaussian-rasterization.git 
