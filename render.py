@@ -102,7 +102,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
                 embedding=embedding, illu_type=illu_type, time=time_view)
             
             if i == test_times-1:
-                render_depths.append(rendering["depth"])
+                render_depths.append(rendering["depth"]/ rendering["depth"].max())
                 render_images.append(rendering["render"].cpu())
                 render_images_restored.append(rendering["render_restored"].cpu())
 
@@ -119,7 +119,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
                     gt_list.append(gt)
                     mask = view.mask
                     mask_list.append(mask)
-                    gt_depth = view.depth
+                    gt_depth = view.depth / view.depth.max()
                     gt_depths.append(gt_depth)
 
     time2=time()
@@ -178,7 +178,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     render_array = (render_array*255).clip(0, 255)
     imageio.mimwrite(f"{render_restored_path}/render.mp4", render_array, fps=30, quality=8)
 
-    render_array = torch.stack(render_depths, dim=0).permute(0, 2, 3, 1)
+    render_array = torch.stack(render_depths, dim=0)
+    print(render_array.shape, "HEEEERWEEEEEE") #.permute(0, 2, 3, 1)
     render_array = render_array.clip(0, 255).cpu()
     imageio.mimwrite(f"{depth_path}/render.mp4", render_array, fps=30, quality=8)
 

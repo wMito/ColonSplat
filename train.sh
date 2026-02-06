@@ -5,5 +5,5 @@
 # PYTHONPATH='.'  python train.py -s data/stereomis/P1_1 --port 6017 --expname "stereomis/P1_1"  --configs arguments/stereomis/P1_1.py 
 # PYTHONPATH='.'  python train.py -s data/stereomis/P1_2 --port 6017 --expname "stereomis/P1_2"  --configs arguments/stereomis/P1_2.py 
 
-PYTHONPATH='.'  python train.py -s data/c1_ascending_t4_v4 --port 6019 --expname "debug_col" --no_ds --no_do --iterations 10000
+PYTHONPATH='.'  python train.py -s data/c1_ascending_t4_v4 --port 6019 --expname "debug_all_dep0.025_clamp0.5" --no_ds --no_do  --tv_weight 0 --depth_weight 0.025 --iterations 30000
 

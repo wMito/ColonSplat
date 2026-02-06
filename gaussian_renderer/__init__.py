@@ -11,7 +11,7 @@
 
 import torch
 import math
-from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
+from diff_gaussian_rasterization_depth import GaussianRasterizationSettings, GaussianRasterizer
 from utils.sh_utils import eval_sh
 
 def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, \
@@ -143,12 +143,12 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     eps_s0 = 10e-6
     keep_axes = [i for i in range(3) if i != pc.games_flatten_axis]
     s0 = torch.ones(pc._scaling.shape[0], 1).cuda() * eps_s0
-    scales_final_flat = torch.cat([scales_final[:, keep_axes], s0], dim=1)
+    scales_final_flat = scales_final.clamp_max(2.0) #0.5) #torch.cat([scales_final[:, keep_axes], s0], dim=1)
 
     if override_color is not None:
         color_final = override_color
 
-    rendered_image, radii, depth = rasterizer(
+    rendered_image, radii, depth,_ = rasterizer(
         means3D = means3D_final,
         means2D = means2D,
         shs = None, #shs*pc.get_concealing[:, None, :]

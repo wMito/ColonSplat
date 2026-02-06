@@ -175,7 +175,7 @@ class OptimizationParams(ParamGroup):
         self.depth_weight=1e-1
         self.tv_weight=1e-2
         self.knn_weight=1e-2
-        self.dcol_weight=10.0
+        self.dcol_weight=1.0
 
         self.illumination_embedding_regularization: float = 0.0
         super().__init__(parser, "Optimization Parameters")
