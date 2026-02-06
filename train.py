@@ -52,6 +52,16 @@ except ImportError:
 def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_iterations, 
                          checkpoint_iterations, checkpoint, debug_from,
                          gaussians, scene, stage, tb_writer, train_iter, timer):
+    
+    centerline = scene.centerline
+    if centerline is not None:
+        cl = torch.from_numpy(centerline).float().cuda()
+        cl_tangent = cl[1:] - cl[:-1]
+        cl_tangent = cl_tangent / (cl_tangent.norm(dim=1, keepdim=True) + 1e-8)
+    scene.centerline_tangent = cl_tangent
+    scene.centerline_points = cl[:-1]
+
+
     first_iter = 0
     gaussians.training_setup(opt)
     if checkpoint:
@@ -234,7 +244,23 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         img_tvloss = TV_loss(rendered_images)
         tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
 
-        loss = Ll1 + depth_loss + tv_loss + loss_clusters +loss_dcol #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
+        ### CENTERLINE LOSS
+
+        xyz0 = gaussians._xyz          # (N,3)
+        xyz1 = transformed_means      # (N,3)
+
+        delta = xyz1 - xyz0            # Δxyz
+        dist2 = torch.cdist(
+            xyz0,
+            scene.centerline_points
+        )
+
+        closest_idx = torch.argmin(dist2, dim=1)
+        tangent = scene.centerline_tangent[closest_idx]
+        delta_parallel = torch.sum(delta * tangent, dim=1)
+        loss_centerline = (delta_parallel ** 2).mean()*0.05
+
+        loss = Ll1 + depth_loss + tv_loss + loss_clusters +loss_dcol + loss_centerline #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
         
         # out_save_dep = rendered_depths.squeeze(0).permute(1,2,0).detach().cpu().numpy()
         # out_save_dep = np.clip(out_save_dep/(out_save_dep.max()+1e-6), 0, 1)

@@ -178,8 +178,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     render_array = (render_array*255).clip(0, 255)
     imageio.mimwrite(f"{render_restored_path}/render.mp4", render_array, fps=30, quality=8)
 
-    render_array = torch.stack(render_depths, dim=0)
-    print(render_array.shape, "HEEEERWEEEEEE") #.permute(0, 2, 3, 1)
+    render_array = torch.stack(render_depths, dim=0).permute(0, 2, 3, 1)
+    print(render_array.shape, "HEEEERWEEEEEE") #
     render_array = render_array.clip(0, 255).cpu()
     imageio.mimwrite(f"{depth_path}/render.mp4", render_array, fps=30, quality=8)
 

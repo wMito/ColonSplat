@@ -92,6 +92,7 @@ class Scene:
                 
             else:
                 self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent, self.maxtime)
+        self.centerline = scene_info.centerline
 
     def save(self, iteration, stage):
         if stage == "coarse":

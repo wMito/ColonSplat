@@ -101,6 +101,9 @@ def generateLookAtCams(xyz, pattern_camera, radius, n_directions = 10, up_dir = 
             campos = cam_position,
             prefiltered = False,
             debug = False,
+            # require_coord = True,
+            # require_depth = True,
+            # kernel_size = 0
         )
 
         raster_settings_cam_list.append(raster_settings_cam)

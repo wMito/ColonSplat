@@ -12,7 +12,7 @@
 import os
 import sys
 from PIL import Image
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
 import torchvision.transforms as transforms
@@ -27,6 +27,7 @@ from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 from utils.general_utils import PILtoTorch
 from tqdm import tqdm
+from utils.centerline_utils import compute_centerline_from_points, save_pcd_with_centerline
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -50,6 +51,7 @@ class SceneInfo(NamedTuple):
     ply_path: str
     maxtime: int
     embedding_info: dict
+    centerline: Optional[object] = None
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
@@ -303,6 +305,13 @@ def readC3VDInfo(datadir, mode='monocular'):
     
     # get the maximum time
     maxtime = endo_dataset.get_maxtime()
+
+    centerline = compute_centerline_from_points(np.asarray(pcd.points))
+    save_pcd_with_centerline(
+            pcd,
+            centerline,
+            os.path.join(datadir, "points_with_centerline.ply"),
+        )
     
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
@@ -311,7 +320,8 @@ def readC3VDInfo(datadir, mode='monocular'):
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path,
                            maxtime=maxtime,
-                           embedding_info=embedding_info)
+                           embedding_info=embedding_info,
+                           centerline=centerline)
 
     return scene_info
 

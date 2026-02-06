@@ -11,7 +11,7 @@
 
 import torch
 import math
-from diff_gaussian_rasterization_depth import GaussianRasterizationSettings, GaussianRasterizer
+from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
 from utils.sh_utils import eval_sh
 
 def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, \
@@ -44,7 +44,10 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             sh_degree=pc.active_sh_degree,
             campos=viewpoint_camera.camera_center.cuda(),
             prefiltered=False,
-            debug=pipe.debug
+            debug=pipe.debug,
+            # require_coord = True,
+            # require_depth = True,
+            # kernel_size = 0
         )
     
     else:
@@ -148,7 +151,8 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     if override_color is not None:
         color_final = override_color
 
-    rendered_image, radii, depth,_ = rasterizer(
+    rendered_image, radii, depth = rasterizer(
+    # rendered_image, radii, rendered_expected_coord, rendered_median_coord, rendered_expected_depth, rendered_median_depth, rendered_alpha, rendered_normal = rasterizer(
         means3D = means3D_final,
         means2D = means2D,
         shs = None, #shs*pc.get_concealing[:, None, :]
