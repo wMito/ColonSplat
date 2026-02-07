@@ -150,7 +150,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             if mask:
                 mask = mask.cuda()
             
-            image_concealing = render_pkg['render_restored']
+            image_concealing = render_pkg['render']
             transformed_means_list.append(transformed_means)
             transformed_rotations_list.append(transformed_rotations)
             transformed_scales_list.append(transformed_scales)
@@ -182,27 +182,23 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         if mask:
             masks = torch.cat(masks, 0)
         
-        
-        # rendered_images_flat = rendered_images.permute(0,2,3,1).reshape(-1, 3)
-        # gt_images_flat = gt_images.permute(0,2,3,1).reshape(-1, 3)
-        # images_concealing_flat = images_concealing.permute(0,2,3,1).reshape(-1, 3)
+        loss = 0
+
+        ## Ll1 loss
         if mask:
-            masks_flat = masks.permute(0,2,3,1).reshape(-1, 1).repeat(1, 3)
             Ll1 = l1_loss(images_concealing, gt_images, masks)
-            #loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat[masks_flat].reshape(-1, 3)))
         else:
             Ll1 = l1_loss(images_concealing, gt_images)
-            #loss_control = helper.Exp_loss_global(mean_val=hyper.eta)((rendered_images_flat.reshape(-1, 3)))
+        loss += Ll1
 
-
+        ### DEPTH LOSS
         if mask:
             depth_loss = opt.depth_weight * l1_loss(torch.clamp(rendered_depths/(rendered_depths.max()+1e-6), 0, 1), \
             torch.clamp(gt_depths/(gt_depths.max()+1e-6), 0, 1), masks, True)
         else:
             depth_loss = opt.depth_weight * l1_loss(torch.clamp(rendered_depths/(rendered_depths.max()+1e-6), 0, 1), \
             torch.clamp(gt_depths/(gt_depths.max()+1e-6), 0, 1))
-        # print('depths', rendered_depths.shape)
-        # print('gt', gt_depths.shape)
+        loss +=depth_loss
 
         ## XYZ CLUSTER LOSS
         idx = gaussians.closest_point_indices
@@ -214,8 +210,9 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         per_point_sq_dist = ((center_points - cluster_means) ** 2).sum(dim=1)
 
         loss_clusters = opt.knn_weight * per_point_sq_dist.mean()
+        loss += loss_clusters
 
-        # # ## ROT CLUSTER LOSS
+        ## NORMAL CLUSTER LOSS - very slow so comment out
         # dir_pp_camera = (transformed_means - viewpoint_cam.camera_center.repeat(transformed_means.shape[0], 1).cuda())
         # transformed_normals = gaussians.get_gaussian_normal(transformed_rotations,transformed_scales, view_dir = dir_pp_camera)
 
@@ -236,16 +233,12 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
 
         # loss_rot_smooth = opt.knn_weight * rot_dist.mean()/5
 
-        ### MINIMIZE COLOR CHANGE
+        ### MINIMIZE DCOLOR UPDATE - DCOL LOSS
         loss_dcol = torch.mean(dcol ** 2)*opt.dcol_weight
+        loss += loss_dcol
 
-        ### OTHER LOSSES
-        depth_tvloss = TV_loss(rendered_depths)
-        img_tvloss = TV_loss(rendered_images)
-        tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
-
+        
         ### CENTERLINE LOSS
-
         xyz0 = gaussians._xyz          # (N,3)
         xyz1 = transformed_means      # (N,3)
 
@@ -258,23 +251,15 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         closest_idx = torch.argmin(dist2, dim=1)
         tangent = scene.centerline_tangent[closest_idx]
         delta_parallel = torch.sum(delta * tangent, dim=1)
-        loss_centerline = (delta_parallel ** 2).mean()*0.05
+        loss_centerline = (delta_parallel ** 2).mean()*opt.centerline_weight #0.05
+        loss += loss_centerline
 
-        loss = Ll1 + depth_loss + tv_loss + loss_clusters +loss_dcol + loss_centerline #+ opt.control_weight*loss_control #+ 1e-1*loss_structure + 1e-6*loss_cc
+        ###  LOSS TV, breaks our colon so opt.tv_weight set to zero by default
+        depth_tvloss = TV_loss(rendered_depths)
+        img_tvloss = TV_loss(rendered_images)
+        tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
+        loss += tv_loss
         
-        # out_save_dep = rendered_depths.squeeze(0).permute(1,2,0).detach().cpu().numpy()
-        # out_save_dep = np.clip(out_save_dep/(out_save_dep.max()+1e-6), 0, 1)
-        # out_save_dep = (out_save_dep*255).astype(np.uint8)
-        # cv2.imwrite('out_dep.png', out_save_dep)
-        
-        # if (iteration+1)%10 == 0:
-            # out_save = rendered_images.squeeze(0).permute(1,2,0).detach().cpu().numpy()
-            # out_save = cv2.cvtColor((np.clip(out_save, 0, 1)*255), cv2.COLOR_RGB2BGR).astype(np.uint8)
-            # cv2.imwrite('out.png', out_save)
-            
-            # out_save_con = images_concealing.squeeze(0).permute(1,2,0).detach().cpu().numpy()
-            # out_save_con = cv2.cvtColor((np.clip(out_save_con, 0, 1)*255), cv2.COLOR_RGB2BGR).astype(np.uint8)
-            # cv2.imwrite('out_con.png', out_save_con)
 
         if mask:
             psnr_ = psnr(images_concealing, gt_images, masks).mean().double()      
@@ -377,20 +362,6 @@ def training(dataset, hyper, opt, pipe, testing_iterations, saving_iterations, c
                              checkpoint_iterations, checkpoint, debug_from,
                              gaussians, scene, "coarse", tb_writer, opt.coarse_iterations,timer)
     if not args.no_fine:
-        # gaussians.update_lr('illumination_embeddings', 1e-2)
-        # gaussians.update_lr('region', 1e-2)
-        # gaussians.update_lr('spatial', 1e-3)
-        
-        gaussians.update_lr('illumination_embeddings', opt.illumination_embedding_lr_fine)
-        #gaussians.update_lr('region', opt.region_lr_fine)
-        #gaussians.update_lr('spatial', opt.spatial_lr_fine)
-        
-        # gaussians.update_lr('xyz', opt.position_lr_init * self.spatial_lr_scale)
-        
-        # opt.pruning_interval=200
-        # opt.pruning_from_iter=1000
-        # opt.densification_interval=200
-        # opt.densify_from_iter=1000
         
         opt.pruning_interval=opt.pruning_interval_fine
         opt.pruning_from_iter=opt.pruning_from_iter

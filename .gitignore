@@ -18,3 +18,5 @@ reconstruct/
 data/
 pretrained_gaussians/
 *.ply
+submodules/diff-gaussian-rasterization-rades/*
+thrash.ipynb

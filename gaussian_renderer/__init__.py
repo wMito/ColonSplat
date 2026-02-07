@@ -45,7 +45,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             campos=viewpoint_camera.camera_center.cuda(),
             prefiltered=False,
             debug=pipe.debug,
-            # require_coord = True,
+            # require_coord = True, #for rade-gs rasterizer
             # require_depth = True,
             # kernel_size = 0
         )
@@ -55,16 +55,14 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
-    # means3D = pc.get_xyz
-    # add deformation to each points
-    # deformation = pc.get_deformation
+
     means3D = pc.get_xyz
+
     if time is None:
-        # print('time', viewpoint_camera.time)
         time = torch.tensor(viewpoint_camera.time).to(means3D.device).repeat(means3D.shape[0],1)
     else:
-        # print('use pre_time', time.item())
         time = time.to(means3D.device).repeat(means3D.shape[0],1)
+
     means2D = screenspace_points
     opacity = pc._opacity
 
@@ -82,7 +80,6 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     if pc.use_deformation_filt:
         deformation_point = pc.get_deformation_table > 0.3
     
-    shs = None
     colors_precomp = pc.features
     
     if stage == "coarse" :
@@ -110,12 +107,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         else:
             means3D_final, scales_final, rotations_final, opacity_final, (color_final, dcol) = pc._deformation(means3D, scales, 
                                                                             rotations, opacity, colors_precomp, time)
-    # print(time.max())
-    # with torch.no_grad():
-    #     pc._deformation_accum[deformation_point] += torch.abs(means3D_deform - means3D[deformation_point])
-
-
-
+    
     scales_final = pc.scaling_activation(scales_final)
 
     if override_scales is not None:
@@ -142,7 +134,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         #     opacity[pc.closest_point_indices[i]] = 1.0
 
     
-    #scale clamping for games
+    #scale s0 clamping for games - optional
     eps_s0 = 10e-6
     keep_axes = [i for i in range(3) if i != pc.games_flatten_axis]
     s0 = torch.ones(pc._scaling.shape[0], 1).cuda() * eps_s0
@@ -152,7 +144,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         color_final = override_color
 
     rendered_image, radii, depth = rasterizer(
-    # rendered_image, radii, rendered_expected_coord, rendered_median_coord, rendered_expected_depth, rendered_median_depth, rendered_alpha, rendered_normal = rasterizer(
+    # rendered_image, radii, rendered_expected_coord, rendered_median_coord, rendered_expected_depth, rendered_median_depth, rendered_alpha, rendered_normal = rasterizer( #for radegs rasterizer
         means3D = means3D_final,
         means2D = means2D,
         shs = None, #shs*pc.get_concealing[:, None, :]
@@ -162,27 +154,8 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         rotations = rotations_final,
         cov3D_precomp = cov3D_precomp)
 
-    # for ablation
-    # rendered_image_concealing = rendered_image
-    
-    # rendered_image_concealing, radii, depth = rasterizer(
-    #     means3D = means3D_final,
-    #     means2D = means2D,
-    #     shs = None, #shs*pc.get_concealing[:, None, :]
-    #     colors_precomp = colors_precomp,
-    #     opacities = opacity,
-    #     scales = scales_final,
-    #     rotations = rotations_final,
-    #     cov3D_precomp = cov3D_precomp)
-    
-    # for ablation
-    # rendered_image_concealing = pc.spatial(rendered_image_concealing.permute(1,2,0)).permute(2,0,1)
-    
-    # rendered_image_concealing = pc.spatial(rendered_image_concealing, \
-    #     app_embeddings)
     
     return {"render": rendered_image,
-            "render_restored": rendered_image,
             "depth": depth,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
