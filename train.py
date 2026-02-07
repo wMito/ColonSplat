@@ -32,7 +32,6 @@ from utils import helper
 from utils.resnet_swag import content_loss
 from torchvision import transforms, models
 
-from utils.arap_utils import arap_loss
 
 import lpips
 from utils.scene_utils import render_training_image
