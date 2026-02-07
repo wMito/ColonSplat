@@ -31,8 +31,10 @@ import cv2
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background):
+
+    videos_path = os.path.join(model_path, name, "ours_{}".format(iteration))
+
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
-    
     depth_path = os.path.join(model_path, name, "ours_{}".format(iteration), "depth")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
     gt_depth_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt_depth")
@@ -146,7 +148,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     render_array = render_array[..., :3]
     # [cv2.putText(f, f"OURS - reconstruction", (20,40),
     #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in render_array]
-    imageio.mimwrite(os.path.join(model_path, name, "ours_{}".format(iteration), 'ours_video.mp4'), render_array, fps=30, quality=8)
+    imageio.mimwrite(f"{videos_path}/ours_video_reconstruction.mp4", render_array, fps=30, quality=8)
 
     render_array = torch.stack(render_images_no_dcol, dim=0).permute(0, 2, 3, 1)
     render_array = (render_array * 255).clip(0, 255).numpy().astype(np.uint8)
@@ -154,7 +156,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     # [cv2.putText(f, f"OURS - no dcol", (20,40),
     #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in render_array]
     imageio.mimwrite(
-        os.path.join(f"{render_no_dcol_path}/ours_video_no_dcol.mp4"), render_array, fps=30, quality=8)
+        os.path.join(f"{videos_path}/ours_video_no_dcol.mp4"), render_array, fps=30, quality=8)
 
     render_array = torch.stack(render_depths, dim=0).permute(0, 2, 3, 1)
     render_array = (render_array*255).clip(0, 255).numpy().astype(np.uint8)
@@ -162,7 +164,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     render_array = render_array[..., :3]
     # [cv2.putText(f, f"OURS - depth", (20,40),
     #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in render_array]
-    imageio.mimwrite(f"{depth_path}/render.mp4", render_array, fps=30, quality=8)
+    imageio.mimwrite(f"{videos_path}/ours_depth.mp4", render_array, fps=30, quality=8)
 
     render_array = torch.stack(gt_depths, dim=0).permute(0, 2, 3, 1)
     render_array = (render_array*255).clip(0, 255).numpy().astype(np.uint8)
@@ -170,7 +172,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     render_array = render_array[..., :3]
     # [cv2.putText(f, f"GT - depth", (20,40),
     #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in render_array]
-    imageio.mimwrite(f"{gt_depth_path}/render.mp4", render_array, fps=30, quality=8)
+    imageio.mimwrite(f"{videos_path}/gt_depth.mp4", render_array, fps=30, quality=8)
     
     gt_array = torch.stack(gt_list, dim=0).permute(0, 2, 3, 1)
     gt_array = (gt_array*255).clip(0, 255).numpy().astype(np.uint8)
@@ -178,7 +180,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     gt_array = gt_array[..., :3]
     # [cv2.putText(f, f"GT - test video", (20,40),
     #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in gt_array]
-    imageio.mimwrite(os.path.join(model_path, name, "ours_{}".format(iteration), 'gt_video.mp4'), gt_array, fps=30, quality=8)
+    imageio.mimwrite(f"{videos_path}/gt_video.mp4", gt_array, fps=30, quality=8)
 
 
 
