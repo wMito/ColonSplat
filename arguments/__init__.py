@@ -173,7 +173,7 @@ class OptimizationParams(ParamGroup):
         
         self.control_weight = 1e-3
         self.depth_weight=1e-1
-        self.tv_weight=0 # only breaks colon shape
+        self.tv_weight=0.0 # only breaks colon shape
         self.knn_weight=1e-2
         self.dcol_weight=0.05
         self.centerline_weight = 0.05
