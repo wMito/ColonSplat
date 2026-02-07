@@ -298,8 +298,8 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             metrics = {'Ll1':Ll1, 'depth_loss':depth_loss, 'elapsed':iter_start.elapsed_time(iter_end), \
                 'psnr':psnr_}
             
-            training_report(tb_writer, iteration, metrics, \
-                testing_iterations, scene, render, [pipe, background], stage)
+            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, 
+                            (pipe, background, 1.,))
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration, stage)
@@ -385,12 +385,42 @@ def prepare_output_and_logger(expname):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def training_report(tb_writer, iteration, metrics, testing_iterations, scene : Scene, renderFunc, renderArgs, stage):
+def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs):
     if tb_writer:
-        tb_writer.add_scalar(f'{stage}/l1_loss', metrics['Ll1'].item(), iteration)
-        tb_writer.add_scalar(f'{stage}/depth_loss', metrics['depth_loss'].item(), iteration)
-        tb_writer.add_scalar(f'{stage}/psnr', metrics['psnr'].item(), iteration)
-        tb_writer.add_scalar(f'{stage}/iter_time', metrics['elapsed'], iteration)
+        tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
+        tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
+        tb_writer.add_scalar('iter_time', elapsed, iteration)
+
+    # Report test and samples of training set
+    if iteration in testing_iterations:
+        torch.cuda.empty_cache()
+        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
+                              {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
+
+        for config in validation_configs:
+            if config['cameras'] and len(config['cameras']) > 0:
+                l1_test = 0.0
+                psnr_test = 0.0
+                for idx, viewpoint in enumerate(config['cameras']):
+                    image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs)["render"], 0.0, 1.0)
+                    gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
+                    if tb_writer and (idx < 5):
+                        tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
+                        if iteration == testing_iterations[0]:
+                            tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
+                    l1_test += l1_loss(image, gt_image).mean().double()
+                    psnr_test += psnr(image, gt_image).mean().double()
+                psnr_test /= len(config['cameras'])
+                l1_test /= len(config['cameras'])          
+                print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
+                if tb_writer:
+                    tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
+                    tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
+
+        if tb_writer:
+            tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
+            tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
+        torch.cuda.empty_cache()
 
 def setup_seed(seed):
      torch.manual_seed(seed)
@@ -413,8 +443,8 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[i*500 for i in range(0,120)])
-    parser.add_argument("--save_iterations", nargs="+", type=int, default=[1, 1000,2000, 3000,4000, 5000, 6000, 7000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[5000, 10000, 15000])
+    parser.add_argument("--save_iterations", nargs="+", type=int, default=[1, 7000])
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--start_checkpoint", type=str, default = None)

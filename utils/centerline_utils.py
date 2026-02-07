@@ -27,54 +27,38 @@ def simple_extrapolate_ends(centerline, trim=3, extend=10):
 
     return np.vstack([start_extra, cl, end_extra]).astype(np.float32)
 
-def compute_centerline_from_points(
-    pts,
-    voxel_size=2.0,
-    k=30,
-    num_slices=80,
-    smooth_sigma=8.0,
-    min_points_per_slice=10,
-):
-    """
-    pts: (N, 3) numpy array, world-space colon point cloud
-    returns: (M, 3) centerline
-    """
 
-    # downsample + denoise
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(pts)
-    pcd = pcd.voxel_down_sample(voxel_size)
-    pcd, _ = pcd.remove_statistical_outlier(20, 2.0)
-
-    points = np.asarray(pcd.points)
-
-    # local PCA directions
-    nbrs = NearestNeighbors(n_neighbors=k).fit(points)
-    _, idxs = nbrs.kneighbors(points)
-
-    dirs = np.zeros_like(points)
-    for i in range(points.shape[0]):
-        neigh = points[idxs[i]]
-        cov = np.cov((neigh - neigh.mean(0)).T)
-        w, v = np.linalg.eigh(cov)
-        dirs[i] = v[:, np.argmax(w)]
-
-    # global axis
-    axis = dirs.mean(0)
-    axis /= np.linalg.norm(axis)
-
-    # project + slice
-    t = points @ axis
-    bins = np.linspace(t.min(), t.max(), num_slices)
-
-    centerline = []
-    for i in range(len(bins) - 1):
-        m = (t >= bins[i]) & (t < bins[i + 1])
-        if m.sum() >= min_points_per_slice:
-            centerline.append(points[m].mean(0))
-
-    centerline = np.array(centerline)
-
+def compute_centerline_from_points(points, num_slices=80, smooth_sigma=8.0):
+    
+    # 1. Determine the 'long' axis. 
+    # For a colon segment, this is usually the axis with the highest variance.
+    # We'll use PCA to find the principal direction.
+    mean = np.mean(points, axis=0)
+    centered_points = points - mean
+    cov = np.cov(centered_points.T)
+    eigenvalues, eigenvectors = np.linalg.eig(cov)
+    main_axis = eigenvectors[:, np.argmax(eigenvalues)]
+    
+    # 2. Project points onto the main axis to find the "length"
+    projections = centered_points @ main_axis
+    min_proj, max_proj = np.min(projections), np.max(projections)
+    
+    # 3. Slice and Find Centroids
+    line_points = []
+    slice_edges = np.linspace(min_proj, max_proj, num_slices + 1)
+    
+    for i in range(num_slices):
+        # Mask points within this Z-slice
+        mask = (projections >= slice_edges[i]) & (projections < slice_edges[i+1])
+        slice_pts = points[mask]
+        
+        if len(slice_pts) > 0:
+            # The center of the cylinder slice is the mean of its points
+            centroid = np.mean(slice_pts, axis=0)
+            line_points.append(centroid)
+    
+    centerline = np.array(line_points).astype(np.float32)
+    smooth_sigma = 8.0
     # smooth
     if smooth_sigma > 0 and len(centerline) > 5:
         centerline = gaussian_filter1d(centerline, sigma=smooth_sigma, axis=0)
@@ -83,8 +67,8 @@ def compute_centerline_from_points(
     if len(centerline) > 11:
         centerline = simple_extrapolate_ends(centerline, trim=15, extend=10)
 
+    return centerline
 
-    return centerline.astype(np.float32)
 
 
 def save_pcd_with_centerline(pcd, centerline, save_path):
