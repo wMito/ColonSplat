@@ -15,7 +15,8 @@ from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianR
 from utils.sh_utils import eval_sh
 
 def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, \
-    override_color = None, stage="fine", embedding_idx=-1, embedding=None, illu_type=None, time=None, override_scales = None, override_raster_settings=None, show_clusters=False):
+    override_color = None, stage="fine", embedding_idx=-1, embedding=None, illu_type=None, \
+    time=None, override_scales = None, override_raster_settings=None, show_clusters=False, show_no_dcol=False):
     """
     Render the scene. 
     
@@ -153,9 +154,23 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
         scales = scales_final_flat,
         rotations = rotations_final,
         cov3D_precomp = cov3D_precomp)
+    
+    rendered_image_no_dcol = None
+    if show_no_dcol:
+        rendered_image_no_dcol,_,_ = rasterizer(
+        # rendered_image, radii, rendered_expected_coord, rendered_median_coord, rendered_expected_depth, rendered_median_depth, rendered_alpha, rendered_normal = rasterizer( #for radegs rasterizer
+            means3D = means3D_final,
+            means2D = means2D,
+            shs = None, #shs*pc.get_concealing[:, None, :]
+            colors_precomp = colors_precomp,
+            opacities = opacity,
+            scales = scales_final_flat,
+            rotations = rotations_final,
+            cov3D_precomp = cov3D_precomp)
 
     
     return {"render": rendered_image,
+            "render_no_dcol": rendered_image_no_dcol,
             "depth": depth,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,

@@ -38,8 +38,10 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     gt_depth_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt_depth")
     masks_path = os.path.join(model_path, name, "ours_{}".format(iteration), "masks")
     pcd_path = os.path.join(model_path, name, "ours_{}".format(iteration), "pcd")
+    render_no_dcol_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders_no_dcol")
 
     makedirs(render_path, exist_ok=True)
+    makedirs(render_no_dcol_path, exist_ok=True)
     makedirs(depth_path, exist_ok=True)
     makedirs(gts_path, exist_ok=True)
     makedirs(gt_depth_path, exist_ok=True)
@@ -49,6 +51,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     
     render_images = []
     render_depths = []
+    render_images_no_dcol = []
     gt_list = []
     gt_depths = []
     mask_list = []
@@ -64,11 +67,12 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             if idx == 0 and i == 0:
                 time1 = time()
             
-            rendering = render(view, gaussians, pipeline, background, time=time_view)
+            rendering = render(view, gaussians, pipeline, background, time=time_view, show_no_dcol=True)
             
             if i == test_times-1:
-                render_depths.append(rendering["depth"]/ rendering["depth"].max().cpu())
+                render_depths.append((rendering["depth"]/ rendering["depth"].max()).cpu())
                 render_images.append(rendering["render"].cpu())
+                render_images_no_dcol.append(rendering["render_no_dcol"].cpu())
 
                 current_means = rendering["transformed_points"]
                 pts = current_means.cpu().numpy()
@@ -102,7 +106,16 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             torchvision.utils.save_image(image, os.path.join(render_path, '{0:05d}'.format(count) + ".png"))
             count +=1
             
-    
+    count = 0
+    print("writing rendering images (no dcol).")
+    if len(render_images_no_dcol) != 0:
+        for image in tqdm(render_images_no_dcol):
+            torchvision.utils.save_image(
+                image,
+                os.path.join(render_no_dcol_path, '{0:05d}'.format(count) + ".png")
+            )
+            count += 1
+
     # count = 0
     # print("writing mask images.")
     # if len(mask_list) != 0:
@@ -134,6 +147,14 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     # [cv2.putText(f, f"OURS - reconstruction", (20,40),
     #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in render_array]
     imageio.mimwrite(os.path.join(model_path, name, "ours_{}".format(iteration), 'ours_video.mp4'), render_array, fps=30, quality=8)
+
+    render_array = torch.stack(render_images_no_dcol, dim=0).permute(0, 2, 3, 1)
+    render_array = (render_array * 255).clip(0, 255).numpy().astype(np.uint8)
+    render_array = np.ascontiguousarray(render_array)[..., :3]
+    # [cv2.putText(f, f"OURS - no dcol", (20,40),
+    #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in render_array]
+    imageio.mimwrite(
+        os.path.join(f"{render_no_dcol_path}/ours_video_no_dcol.mp4"), render_array, fps=30, quality=8)
 
     render_array = torch.stack(render_depths, dim=0).permute(0, 2, 3, 1)
     render_array = (render_array*255).clip(0, 255).numpy().astype(np.uint8)
