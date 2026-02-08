@@ -46,9 +46,9 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             campos=viewpoint_camera.camera_center.cuda(),
             prefiltered=False,
             debug=pipe.debug,
-            # require_coord = True, #for rade-gs rasterizer
-            # require_depth = True,
-            # kernel_size = 0
+            require_coord = True, #for rade-gs rasterizer
+            require_depth = True,
+            kernel_size = 0
         )
     
     else:
@@ -144,8 +144,8 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     if override_color is not None:
         color_final = override_color
 
-    rendered_image, radii, depth = rasterizer(
-    # rendered_image, radii, rendered_expected_coord, rendered_median_coord, rendered_expected_depth, rendered_median_depth, rendered_alpha, rendered_normal = rasterizer( #for radegs rasterizer
+    # rendered_image, radii, depth = rasterizer(
+    rendered_image, radii, rendered_expected_coord, rendered_median_coord, rendered_expected_depth, rendered_median_depth, rendered_alpha, rendered_normal = rasterizer( #for radegs rasterizer
         means3D = means3D_final,
         means2D = means2D,
         shs = None, #shs*pc.get_concealing[:, None, :]
@@ -157,8 +157,8 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     
     rendered_image_no_dcol = None
     if show_no_dcol:
-        rendered_image_no_dcol,_,_ = rasterizer(
-        # rendered_image, radii, rendered_expected_coord, rendered_median_coord, rendered_expected_depth, rendered_median_depth, rendered_alpha, rendered_normal = rasterizer( #for radegs rasterizer
+        # rendered_image_no_dcol,_,_ = rasterizer(
+        rendered_image_no_dcol, _, _, _, _, _, _, _ = rasterizer( #for radegs rasterizer
             means3D = means3D_final,
             means2D = means2D,
             shs = None, #shs*pc.get_concealing[:, None, :]
@@ -168,7 +168,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             rotations = rotations_final,
             cov3D_precomp = cov3D_precomp)
 
-    
+    depth = rendered_expected_depth if pipe.depth_mode == "expected" else rendered_median_depth
     return {"render": rendered_image,
             "render_no_dcol": rendered_image_no_dcol,
             "depth": depth,
