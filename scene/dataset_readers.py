@@ -306,7 +306,7 @@ def readC3VDInfo(datadir, mode='monocular'):
     # get the maximum time
     maxtime = endo_dataset.get_maxtime()
 
-    centerline = compute_centerline_from_points(np.asarray(pcd.points))
+    centerline = compute_centerline_from_points(np.asarray(pcd.points),train_cam_infos)
     save_pcd_with_centerline(
             pcd,
             centerline,
