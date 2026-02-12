@@ -58,6 +58,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
 
 
     means3D = pc.get_xyz
+    color_emb = pc.get_deformation_table
 
     if time is None:
         time = torch.tensor(viewpoint_camera.time).to(means3D.device).repeat(means3D.shape[0],1)
@@ -107,7 +108,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             opacity_final[~deformation_point] = opacity[~deformation_point]
         else:
             means3D_final, scales_final, rotations_final, opacity_final, (color_final, dcol) = pc._deformation(means3D, scales, 
-                                                                            rotations, opacity, colors_precomp, time)
+                                                                            rotations, opacity, colors_precomp, time, color_emb)
     
     scales_final = pc.scaling_activation(scales_final)
 
@@ -139,7 +140,7 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
     eps_s0 = 10e-6
     keep_axes = [i for i in range(3) if i != pc.games_flatten_axis]
     s0 = torch.ones(pc._scaling.shape[0], 1).cuda() * eps_s0
-    scales_final_flat = scales_final.clamp_max(2.0) #0.5) #torch.cat([scales_final[:, keep_axes], s0], dim=1)
+    scales_final_flat = scales_final.clamp_max(0.05*pc.spatial_lr_scale) #0.5) #torch.cat([scales_final[:, keep_axes], s0], dim=1)
 
     if override_color is not None:
         color_final = override_color

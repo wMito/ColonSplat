@@ -110,6 +110,7 @@ class ModelHiddenParams(ParamGroup):
 
         self.use_deformation_filt = False
         self.deformation_perc = 0.5
+        self.use_color_emb = False
         
         super().__init__(parser, "ModelHiddenParams")
         
@@ -172,12 +173,12 @@ class OptimizationParams(ParamGroup):
         self.illumination_embedding_lr_fine_final: float = 0.00001
         
         
-        self.control_weight = 1e-3
-        self.depth_weight=1e-1
-        self.tv_weight=0.0 # only breaks colon shape
-        self.knn_weight=1e-2
-        self.dcol_weight=0.05
-        self.centerline_weight = 0.05
+        self.control_weight = 1e-3 #not used, idk whats that
+        self.depth_weight=0.25
+        self.tv_weight=0.001 # we use tv only on RGB images, not on depth, depth breaks!
+        self.knn_weight=0.01
+        self.dcol_weight=0.005
+        self.centerline_weight = 0.0
 
         self.illumination_embedding_regularization: float = 0.0
         super().__init__(parser, "Optimization Parameters")

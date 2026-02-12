@@ -13,3 +13,4 @@ tqdm
 torchmetrics
 imageio
 fpsample
+cuvs

@@ -14,8 +14,8 @@ class Deformation(nn.Module):
         self.no_grid = args.no_grid
         
         self.grid = HexPlaneField(args.bounds, args.kplanes_config, args.multires)
-        self.create_net()
         self.args = args
+        self.create_net()
         
     def create_net(self):
         mlp_out_dim = 0
@@ -32,7 +32,14 @@ class Deformation(nn.Module):
         self.scales_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 3))
         self.rotations_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 4))
         self.opacity_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 1))
-        self.color_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 3))
+
+        if self.args.use_color_emb:
+            self.use_color_emb = True
+            in_dim = self.W + self.args.color_emb_dim 
+            self.color_deform = nn.Sequential(nn.Linear(in_dim, self.W), nn.ReLU(), nn.Linear(self.W, self.W), nn.ReLU(), nn.Linear(self.W, 3))
+        else:
+            self.use_color_emb = False
+            self.color_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 3))
 
         
         for name, param in self.feature_out.named_parameters():
@@ -60,18 +67,18 @@ class Deformation(nn.Module):
         h = self.feature_out(h)
         return h
 
-    def forward(self, rays_pts_emb, scales_emb=None, rotations_emb=None, opacity = None, color_emb = None, time_emb=None):
+    def forward(self, rays_pts_emb, scales_emb=None, rotations_emb=None, opacity = None, color_emb = None, time_emb=None, use_color_emb = None):
         if time_emb is None:
             return self.forward_static(rays_pts_emb[:,:3])
         else:
-            return self.forward_dynamic(rays_pts_emb, scales_emb, rotations_emb, opacity, color_emb, time_emb)
+            return self.forward_dynamic(rays_pts_emb, scales_emb, rotations_emb, opacity, color_emb, time_emb, use_color_emb)
 
     def forward_static(self, rays_pts_emb):
         grid_feature = self.grid(rays_pts_emb[:,:3])
         dx = self.static_mlp(grid_feature)
         return rays_pts_emb[:, :3] + dx
 
-    def forward_dynamic(self,rays_pts_emb, scales_emb, rotations_emb, opacity_emb, color_emb, time_emb):
+    def forward_dynamic(self,rays_pts_emb, scales_emb, rotations_emb, opacity_emb, color_emb, time_emb, use_color_emb):
         hidden = self.query_time(rays_pts_emb, time_emb).float()
         
         if self.args.no_dx:
@@ -80,17 +87,35 @@ class Deformation(nn.Module):
             dx = self.pos_deform(hidden)
             pts = rays_pts_emb[:, :3] + dx
         
+        MAX_REL = 0.1
+        # ----- SCALE -----
         if self.args.no_ds:
-            scales = scales_emb[:,:3]
+            scales = scales_emb[:, :3]
         else:
             ds = self.scales_deform(hidden)
-            scales = scales_emb[:,:3] + ds
-            
+
+            base = scales_emb[:, :3]
+
+            # limit delta to MAX_REL of base value
+            max_delta = MAX_REL * base.abs()
+            ds = torch.clamp(ds, -max_delta, max_delta)
+
+            scales = base + ds
+
+
+        # ----- ROTATION -----
         if self.args.no_dr:
-            rotations = rotations_emb[:,:4]
+            rotations = rotations_emb[:, :4]
         else:
             dr = self.rotations_deform(hidden)
-            rotations = rotations_emb[:,:4] + dr
+
+            base = rotations_emb[:, :4]
+
+            # limit delta to MAX_REL of base value
+            max_delta = MAX_REL * base.abs()
+            dr = torch.clamp(dr, -max_delta, max_delta)
+
+            rotations = base + dr
             
         if self.args.no_do:
             opacity = opacity_emb[:,:1] 
@@ -98,11 +123,15 @@ class Deformation(nn.Module):
             do = self.opacity_deform(hidden) 
             opacity = opacity_emb[:,:1] + do
         
+        ## COLOR 
         if self.args.no_dcol:
             color = color_emb[:,:3] 
             dcol = color_emb[:,:3]*0
         else:
-            dcol = self.color_deform(hidden).clamp_min(0.0) #dcol only >0, later in training we also penalizetoo large values to encourage model to explain changes by xyz motion
+            if self.use_color_emb:
+                dcol = self.color_deform(torch.cat([hidden, use_color_emb],-1))
+            else:
+                dcol = self.color_deform(hidden)
             color = color_emb[:,:3] * (1+dcol)
 
         return pts, scales, rotations, opacity, (color, dcol)
@@ -142,9 +171,9 @@ class deform_network(nn.Module):
         self.register_buffer('opacity_poc', torch.FloatTensor([(2**i) for i in range(opacity_pe)]))
         self.apply(initialize_weights)
     
-    def forward(self, point, scales=None, rotations=None, opacity=None, colors = None, times_sel=None):
+    def forward(self, point, scales=None, rotations=None, opacity=None, colors = None, times_sel=None, use_color_emb=None):
         if times_sel is not None:
-            return self.forward_dynamic(point, scales, rotations, opacity, colors, times_sel)
+            return self.forward_dynamic(point, scales, rotations, opacity, colors, times_sel, use_color_emb)
         else:
             return self.forward_static(point)
         
@@ -152,14 +181,15 @@ class deform_network(nn.Module):
         points = self.deformation_net(points)
         return points
 
-    def forward_dynamic(self, point, scales=None, rotations=None, opacity=None, colors=None, times_sel=None):
+    def forward_dynamic(self, point, scales=None, rotations=None, opacity=None, colors=None, times_sel=None, use_color_emb=None):
         # times_emb = poc_fre(times_sel, self.time_poc)
         means3D, scales, rotations, opacity, colors = self.deformation_net( point,
                                                 scales,
                                                 rotations,
                                                 opacity,
                                                 colors,
-                                                times_sel)
+                                                times_sel,
+                                                use_color_emb)
         return means3D, scales, rotations, opacity, colors
     
     def get_mlp_parameters(self):

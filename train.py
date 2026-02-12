@@ -14,7 +14,7 @@ import random
 import os
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim, lpips_loss, TV_loss
+from utils.loss_utils import l1_loss, ssim, lpips_loss, TV_loss, smooth_regularization_loss
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
@@ -256,9 +256,8 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         ###  LOSS TV, breaks our colon so opt.tv_weight set to zero by default
         depth_tvloss = TV_loss(rendered_depths)
         img_tvloss = TV_loss(rendered_images)
-        tv_loss = opt.tv_weight * (img_tvloss + depth_tvloss)
+        tv_loss = opt.tv_weight * (img_tvloss) # + depth_tvloss)
         loss += tv_loss
-        
 
         if mask:
             psnr_ = psnr(images_concealing, gt_images, masks).mean().double()      
@@ -443,7 +442,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
-    parser.add_argument("--test_iterations", nargs="+", type=int, default=[5000, 10000, 15000])
+    parser.add_argument("--test_iterations", nargs="+", type=int, default=[5000, 10000, 15000, 20000, 30000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[1, 7000])
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--quiet", action="store_true")

@@ -30,7 +30,7 @@ class Scene:
         self.gaussians = gaussians
         self.mode = args.mode
         args.mode = self.mode
-        args.extra_mark='endonerf'
+        args.extra_mark="c3vd2" #'endonerf'
 
         if load_iteration:
             if load_iteration == -1:
@@ -85,6 +85,7 @@ class Scene:
                                                     "point_cloud",
                                                     iteration_str,
                                                    ))
+            self.gaussians.spatial_lr_scale = self.cameras_extent
         else:
             if args.extra_mark == 'endonerf':
                 self.gaussians.create_from_pcd(scene_info.point_cloud, args.camera_extent, self.maxtime)

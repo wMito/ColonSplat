@@ -30,7 +30,7 @@ from gaussian_renderer import render
 from utils.loss_utils import l1_loss
 from tqdm import tqdm
 import time
-from gaussian_norms import compute_gauss_norm
+# from gaussian_norms import compute_gauss_norm
 
 class GaussianModel:
 
@@ -55,6 +55,8 @@ class GaussianModel:
         self.max_sh_degree = sh_degree  
         self._xyz = torch.empty(0)
         self.args = args
+        self.color_emb_dim = 16
+        self.args.color_emb_dim = self.color_emb_dim
         self._deformation = deform_network(args)
         self.use_deformation_filt = args.use_deformation_filt
         self.deformation_perc = args.deformation_perc
@@ -159,28 +161,24 @@ class GaussianModel:
     
     @property
     def get_deformation_table(self):
-        k = int(self._deformation_table.shape[0]*self.deformation_perc)
-        topk, _ = torch.topk(self._deformation_table, k)
-        threshold = topk[-1]
-        out = torch.sigmoid((self._deformation_table - threshold)/0.1)
-        return out
+        return self._deformation_table
 
-    def get_gaussian_normal(self, q, s, view_dir = None):
-        """
-        Compute the normal of the 3D Gaussian and orient it towards camera.
-        """
-        input_rotation_normalized = q / q.norm(p=2, dim=1, keepdim=True)
-        cuda_normal = compute_gauss_norm(s, input_rotation_normalized, 1.0) #1.0 scale modifier
-        N = torch.nn.functional.normalize(cuda_normal, dim=1) 
+    # def get_gaussian_normal(self, q, s, view_dir = None):
+    #     """
+    #     Compute the normal of the 3D Gaussian and orient it towards camera.
+    #     """
+    #     input_rotation_normalized = q / q.norm(p=2, dim=1, keepdim=True)
+    #     cuda_normal = compute_gauss_norm(s, input_rotation_normalized, 1.0) #1.0 scale modifier
+    #     N = torch.nn.functional.normalize(cuda_normal, dim=1) 
         
-        if view_dir is not None:
-            V = -torch.nn.functional.normalize(view_dir, dim=1)
+    #     if view_dir is not None:
+    #         V = -torch.nn.functional.normalize(view_dir, dim=1)
             
-            # normals always towards camera
-            N_dot_V = torch.sum(N * V, dim=1, keepdim=True)  # [N, 1]
-            N = torch.where(N_dot_V < 0, -N, N)  # Flip N if N_dot_V < 0
+    #         # normals always towards camera
+    #         N_dot_V = torch.sum(N * V, dim=1, keepdim=True)  # [N, 1]
+    #         N = torch.where(N_dot_V < 0, -N, N)  # Flip N if N_dot_V < 0
 
-        return N
+    #     return N
 
     def rerun_knn(self, new_points, k = 100, from_scratch=False):
         if from_scratch:
@@ -232,6 +230,8 @@ class GaussianModel:
 
         self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._deformation = self._deformation.to("cuda") 
+        _deformation_table = torch.randn((self.get_xyz.shape[0], self.color_emb_dim), device="cuda")*0.01
+
 
              
         self.features = nn.Parameter(features.requires_grad_(True))
@@ -245,7 +245,8 @@ class GaussianModel:
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         #self._deformation_table = torch.gt(torch.ones((self.get_xyz.shape[0]),device="cuda"),0)
-        self._deformation_table = nn.Parameter(torch.rand((self.get_xyz.shape[0]),device="cuda").requires_grad_(True))
+
+        self._deformation_table = nn.Parameter(_deformation_table.requires_grad_(True))
         self.original_normals, self.closest_point_indices = self.compute_point_cloud_normals(k=100)
 
 
@@ -292,7 +293,7 @@ class GaussianModel:
         self._deformation_accum = torch.zeros((self.get_xyz.shape[0],3),device="cuda")
         
         l = [
-            {'params': [self._xyz], 'lr': training_args.position_lr_init, "name": "xyz"},
+            {'params': [self._xyz], 'lr': training_args.position_lr_init*self.spatial_lr_scale, "name": "xyz"},
             {'params': list(self._deformation.get_mlp_parameters()), 'lr': training_args.deformation_lr_init, "name": "deformation"},
             #{'params': list(self.region.parameters()), 'lr': training_args.region_lr, "name": "region"},  
             #{'params': list(self.spatial.parameters()), 'lr': training_args.spatial_lr, "name": "spatial"},            
@@ -304,17 +305,17 @@ class GaussianModel:
             {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
             {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
             {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
-            {'params': [self._deformation_table], 'lr': training_args.opacity_lr, "name": "deformation_table"}
+            {'params': [self._deformation_table], 'lr': training_args.feature_lr, "name": "deformation_table"}
         ]
         
-        if self.illumination_embeddings is not None:
-            l.append({'params': [self.illumination_embeddings], 'lr': training_args.illumination_embedding_lr, \
-                "name": "illumination_embeddings", "weight_decay": training_args.illumination_embedding_regularization})
+        # if self.illumination_embeddings is not None:
+        #     l.append({'params': [self.illumination_embeddings], 'lr': training_args.illumination_embedding_lr, \
+        #         "name": "illumination_embeddings", "weight_decay": training_args.illumination_embedding_regularization})
 
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
         
-        self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init,
-                                                    lr_final=training_args.position_lr_final,
+        self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
+                                                    lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
         self.deformation_scheduler_args = get_expon_lr_func(lr_init=training_args.deformation_lr_init,
@@ -659,7 +660,7 @@ class GaussianModel:
         new_features = self.features[selected_pts_mask].repeat(N, 1)
         
         new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
-        new_deformation_table = self._deformation_table[selected_pts_mask].repeat(N)
+        new_deformation_table = self._deformation_table[selected_pts_mask].repeat(N, 1)
         self.densification_postfix(new_xyz, new_features, new_opacity, new_scaling, new_rotation, new_deformation_table)
 
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
@@ -719,6 +720,7 @@ class GaussianModel:
 
     @torch.no_grad()
     def update_deformation_table(self,threshold):
+        raise NotImplemented
         # print("origin deformation point nums:",self._deformation_table.sum())
         self._deformation_table = torch.gt(self._deformation_accum.max(dim=-1).values/100,threshold)
 
