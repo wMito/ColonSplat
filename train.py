@@ -14,7 +14,7 @@ import random
 import os
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim, lpips_loss, TV_loss, smooth_regularization_loss
+from utils.loss_utils import l1_loss, ssim, lpips_loss, TV_loss
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
