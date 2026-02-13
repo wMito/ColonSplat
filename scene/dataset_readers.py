@@ -50,8 +50,9 @@ class SceneInfo(NamedTuple):
     nerf_normalization: dict
     ply_path: str
     maxtime: int
-    embedding_info: dict
+    embedding_info: dict = None #TODO: delete this
     centerline: Optional[object] = None
+    gt_plys: list = None
 
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
@@ -123,8 +124,14 @@ def fetchPly(path):
     plydata = PlyData.read(path)
     vertices = plydata['vertex']
     positions = np.vstack([vertices['x'], vertices['y'], vertices['z']]).T
-    colors = np.vstack([vertices['red'], vertices['green'], vertices['blue']]).T / 255.0
-    normals = np.vstack([vertices['nx'], vertices['ny'], vertices['nz']]).T
+    try:
+        colors = np.vstack([vertices['red'], vertices['green'], vertices['blue']]).T / 255.0
+        normals = np.vstack([vertices['nx'], vertices['ny'], vertices['nz']]).T
+    except ValueError:
+        normals = np.random.random((positions.shape[0], 3))
+        colors = (np.ones_like(normals) * np.array([158,62,60]) / 255.0)
+        
+
     return BasicPointCloud(points=positions, colors=colors, normals=normals)
 
 def storePly(path, xyz, rgb):
@@ -325,9 +332,60 @@ def readC3VDInfo(datadir, mode='monocular'):
 
     return scene_info
 
+
+def readColonSplatInfo(datadir, load_plys=False):
+    # load camera infos
+    from scene.endo_loader import ColonSplat_Dataset
+    endo_dataset = ColonSplat_Dataset(
+        datadir=datadir,
+        downsample=1.0
+    )
+    train_cam_infos = endo_dataset.format_infos(split=endo_dataset.train_idxs)
+    test_cam_infos = endo_dataset.format_infos(split=endo_dataset.test_idxs)
+    
+    
+    # get normalizations
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+
+    ply_path = os.path.join(datadir, "ply", "pc_0001.ply")
+    
+    
+    pcd = fetchPly(ply_path)
+
+    
+    # get the maximum time
+    maxtime = endo_dataset.maxtime
+
+    if load_plys:
+        gt_plys_train = endo_dataset.get_gt_plys(split=endo_dataset.train_idxs)
+        gt_plys_test = endo_dataset.get_gt_plys(split=endo_dataset.test_idxs)
+        gt_plys = {"train": gt_plys_train, "test": gt_plys_test}
+        scene_info = SceneInfo(point_cloud=pcd,
+                            train_cameras=train_cam_infos,
+                            test_cameras=test_cam_infos,
+                            video_cameras=None,
+                            nerf_normalization=nerf_normalization,
+                            ply_path=ply_path,
+                            maxtime=maxtime,
+                            gt_plys=gt_plys
+                            )
+
+    else:
+        scene_info = SceneInfo(point_cloud=pcd,
+                            train_cameras=train_cam_infos,
+                            test_cameras=test_cam_infos,
+                            video_cameras=None,
+                            nerf_normalization=nerf_normalization,
+                            ply_path=ply_path,
+                            maxtime=maxtime
+                            )
+
+    return scene_info
+
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
     "endonerf": readEndoNeRFInfo,
     "scared": readScaredInfo,
-    "c3vd": readC3VDInfo
+    "c3vd": readC3VDInfo,
+    "colonsplat": readColonSplatInfo
 }

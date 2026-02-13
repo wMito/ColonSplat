@@ -742,3 +742,89 @@ class SCARED_Dataset(object):
         
     def get_maxtime(self):
         return self.maxtime
+
+
+
+class ColonSplat_Dataset(object):
+    def __init__(
+        self,
+        datadir,
+        downsample=1.0,
+        test_every=8,
+    ):
+        self.root_dir = datadir
+        all_cams = self.readCamerasFromTransforms(datadir, "transforms.json", white_background=False)
+        self.all_cams = all_cams
+        n_frames = len(all_cams)
+        self.train_idxs = [i for i in range(n_frames) if (i-1) % test_every != 0]
+        self.test_idxs = [i for i in range(n_frames) if (i-1) % test_every == 0]
+        self.video_idxs = [i for i in range(n_frames)]
+        self.maxtime = 1.0
+
+
+    def format_infos(self, split):
+        split_id = 0
+        cameras = []
+        for cam in self.all_cams:
+            if cam.uid in split:
+                cam.colmap_id = split_id
+                split_id += 1
+                cameras.append(cam)
+        return cameras
+
+    def readCamerasFromTransforms(self, path, transformsfile, white_background):
+        from pathlib import Path
+        cams = []
+
+        with open(os.path.join(path, transformsfile)) as json_file:
+            contents = json.load(json_file)
+            fovx = contents["camera_angle_x"]
+
+            frames = contents["frames"] 
+            for idx, frame in enumerate(frames):
+                cam_name = os.path.join(path, frame["file_path"])
+
+                # NeRF 'transform_matrix' is a camera-to-world transform
+                c2w = np.array(frame["transform_matrix"])
+                # change from OpenGL/Blender camera axes (Y up, Z back) to COLMAP (Y down, Z forward)
+                c2w[:3, 1:3] *= -1
+
+                # get the world-to-camera transform and set R, T
+                w2c = np.linalg.inv(c2w)
+                R = np.transpose(w2c[:3,:3])  # R is stored transposed due to 'glm' in CUDA code
+                T = w2c[:3, 3]
+
+                image_path = os.path.join(path, cam_name)
+                image_name = Path(cam_name).stem
+                image = Image.open(image_path)
+
+                depth_path = os.path.join(path, frame["depth_path"])
+                depth = np.load(depth_path)
+                depth = torch.from_numpy(depth).float().unsqueeze(0)
+                
+
+                im_data = np.array(image.convert("RGBA"))
+
+                bg = np.array([1,1,1]) if white_background else np.array([0, 0, 0])
+
+                norm_data = im_data / 255.0
+                arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
+                image = torch.from_numpy(arr).float()
+
+                fovy = focal2fov(fov2focal(fovx, image.size(0)), image.size(1))
+                FovY = fovy 
+                FovX = fovx
+                time = torch.tensor(idx/len(frames)).float().cuda()
+                image = image.permute(2, 0, 1)
+
+                cams.append(Camera(idx=idx, uid=idx, R=R, T=T, FoVy=FovY, FoVx=FovX, image=image, depth=depth, \
+                                gt_alpha_mask=None, mask=None, image_name=image_name,  \
+                                    time=time))
+        return cams
+    
+    def get_gt_plys(self, split):
+        ply_paths = {}
+        for cam in self.all_cams:
+            if cam.uid in split:
+                ply_paths[cam.time] = os.path.join(self.root_dir, "ply", f"pc_{cam.image_name.split('_')[1]}.ply")
+        return ply_paths
