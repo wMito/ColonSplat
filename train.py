@@ -264,6 +264,9 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         else:
             psnr_ = psnr(images_concealing, gt_images).mean().double()  
         
+        if torch.isnan(loss) or torch.isinf(loss):
+            print(f"\n❌ Loss NaN/Inf at iteration {iteration}")
+            
         loss.backward()
         for group in gaussians.optimizer.param_groups:
             for param in group['params']:
