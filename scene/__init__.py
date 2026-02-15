@@ -47,6 +47,9 @@ class Scene:
         elif os.path.exists(os.path.join(args.source_path, "pose.txt")):
             scene_info = sceneLoadTypeCallbacks["c3vd"](args.source_path, mode=args.mode)
             print("Found pose.txt, assuming C3VD data!")
+        elif os.path.exists(os.path.join(args.source_path, "transforms.json")):
+            scene_info = sceneLoadTypeCallbacks["colonsplat"](args.source_path, load_plys=True)
+            print("Found transforms.json, assuming ColonSplat data!")
         elif os.path.exists(os.path.join(args.source_path, "poses_bounds.npy")) and args.extra_mark == 'endonerf':
             scene_info = sceneLoadTypeCallbacks["endonerf"](args.source_path, mode=args.mode)
             print("Found poses_bounds.py and extra marks with EndoNeRf")
@@ -74,6 +77,8 @@ class Scene:
         xyz_max = scene_info.point_cloud.points.max(axis=0)
         xyz_min = scene_info.point_cloud.points.min(axis=0)
         self.gaussians._deformation.deformation_net.grid.set_aabb(xyz_max,xyz_min)
+
+        self.gt_plys = scene_info.gt_plys   
 
         if self.loaded_iter:
             iteration_str = 'iteration_'+str(self.loaded_iter) if not load_coarse else 'coarse_iteration_'+str(self.loaded_iter)

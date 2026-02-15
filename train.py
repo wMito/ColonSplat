@@ -52,13 +52,13 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                          checkpoint_iterations, checkpoint, debug_from,
                          gaussians, scene, stage, tb_writer, train_iter, timer):
     
-    centerline = scene.centerline
-    if centerline is not None:
-        cl = torch.from_numpy(centerline).float().cuda()
-        cl_tangent = cl[1:] - cl[:-1]
-        cl_tangent = cl_tangent / (cl_tangent.norm(dim=1, keepdim=True) + 1e-8)
-    scene.centerline_tangent = cl_tangent
-    scene.centerline_points = cl[:-1]
+    # centerline = scene.centerline
+    # if centerline is not None:
+    #     cl = torch.from_numpy(centerline).float().cuda()
+    #     cl_tangent = cl[1:] - cl[:-1]
+    #     cl_tangent = cl_tangent / (cl_tangent.norm(dim=1, keepdim=True) + 1e-8)
+    # scene.centerline_tangent = cl_tangent
+    # scene.centerline_points = cl[:-1]
 
 
     first_iter = 0
@@ -237,21 +237,21 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         loss += loss_dcol
 
         
-        ### CENTERLINE LOSS
-        xyz0 = gaussians._xyz          # (N,3)
-        xyz1 = transformed_means      # (N,3)
+        # ### CENTERLINE LOSS
+        # xyz0 = gaussians._xyz          # (N,3)
+        # xyz1 = transformed_means      # (N,3)
 
-        delta = xyz1 - xyz0            # Δxyz
-        dist2 = torch.cdist(
-            xyz0,
-            scene.centerline_points
-        )
+        # delta = xyz1 - xyz0            # Δxyz
+        # dist2 = torch.cdist(
+        #     xyz0,
+        #     scene.centerline_points
+        # )
 
-        closest_idx = torch.argmin(dist2, dim=1)
-        tangent = scene.centerline_tangent[closest_idx]
-        delta_parallel = torch.sum(delta * tangent, dim=1)
-        loss_centerline = (delta_parallel ** 2).mean()*opt.centerline_weight #0.05
-        loss += loss_centerline
+        # closest_idx = torch.argmin(dist2, dim=1)
+        # tangent = scene.centerline_tangent[closest_idx]
+        # delta_parallel = torch.sum(delta * tangent, dim=1)
+        # loss_centerline = (delta_parallel ** 2).mean()*opt.centerline_weight #0.05
+        # loss += loss_centerline
 
         ###  LOSS TV, breaks our colon so opt.tv_weight set to zero by default
         depth_tvloss = TV_loss(rendered_depths)
