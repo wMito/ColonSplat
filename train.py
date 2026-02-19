@@ -131,17 +131,16 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         visibility_filter_list = []
         viewspace_point_tensor_list = []
         transformed_means_list = []
-        transformed_rotations_list =[]
-        transformed_scales_list =[]
+        transformed_color_list =[]
         
         for viewpoint_cam in viewpoint_cams:
             render_pkg = render(viewpoint_cam, gaussians, pipe, background, stage=stage)
             image, depth, viewspace_point_tensor, visibility_filter, radii, transformed_means, \
-                transformed_rotations, transformed_scales, dcol = \
+                transformed_color, dcol = \
                 render_pkg["render"], render_pkg["depth"], render_pkg["viewspace_points"], \
                     render_pkg["visibility_filter"], render_pkg["radii"], \
-                        render_pkg["transformed_points"], render_pkg["transformed_rotations"], \
-                            render_pkg["transformed_scales"], render_pkg["dcol"]
+                        render_pkg["transformed_points"], render_pkg["transformed_color"], \
+                            render_pkg["dcol"]
                         
             gt_image = viewpoint_cam.original_image.cuda().float()
             gt_depth = viewpoint_cam.original_depth.cuda().float()
@@ -151,8 +150,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
             
             image_concealing = render_pkg['render']
             transformed_means_list.append(transformed_means)
-            transformed_rotations_list.append(transformed_rotations)
-            transformed_scales_list.append(transformed_scales)
+            transformed_color_list.append(transformed_color)
             images_concealing.append(image_concealing.unsqueeze(0))
             images.append(image.unsqueeze(0))
             if depth.ndim == 2:
@@ -175,8 +173,7 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         gt_images = torch.cat(gt_images,0)
         gt_depths = torch.cat(gt_depths, 0)
         transformed_means = torch.cat(transformed_means_list, 0)
-        transformed_rotations = torch.cat(transformed_rotations_list, 0)
-        transformed_scales = torch.cat(transformed_scales_list, 0)
+        transformed_color = torch.cat(transformed_color_list, 0)
         images_concealing = torch.cat(images_concealing, 0)
         if mask:
             masks = torch.cat(masks, 0)
@@ -235,6 +232,10 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         ### MINIMIZE DCOLOR UPDATE - DCOL LOSS
         loss_dcol = torch.mean(dcol ** 2)*opt.dcol_weight
         loss += loss_dcol
+
+        ### MINIMIZE DIFFERENCES BETWEEN COLORS
+        loss_color_smooth = opt.col_smooth_weight * ((transformed_color - transformed_color.mean(dim=0)) ** 2).mean()
+        loss += loss_color_smooth
 
         
         # ### CENTERLINE LOSS
@@ -462,7 +463,7 @@ if __name__ == "__main__":
     safe_state(args.quiet)
 
     # Start GUI server, configure and run training
-    network_gui.init(args.ip, args.port)
+    #network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
     training(lp.extract(args), hp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, \
         args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.expname, args.extra_mark)

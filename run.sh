@@ -1,7 +1,7 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1
-export PYTHONPATH='.'
+# export CUDA_VISIBLE_DEVICES=1
+# export PYTHONPATH='.'
 
 # Shared params -these are our baseline values, the same should be in arguments/__init__.py
 DEPTH_W=0.25
@@ -11,6 +11,7 @@ KNN_W=(
     0.01
     )
 ITERS=30000
+COL_SMOOTH_W=0.0001
 
 DATASETS=(
     c1_ascending_t4_v4
@@ -47,6 +48,7 @@ do
             --pruning_from_iter 500000 \
             --densify_from_iter_fine 500000 \
             --pruning_from_iter_fine 500000 \
+            --col_smooth_weight $COL_SMOOTH_W \
             --no_do --use_color_emb #--no_dr --no_ds 
 
         # ---- RENDER ----

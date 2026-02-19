@@ -750,7 +750,7 @@ class ColonSplat_Dataset(object):
         self,
         datadir,
         downsample=1.0,
-        test_every=8,
+        test_every=5,
     ):
         self.root_dir = datadir
         all_cams = self.readCamerasFromTransforms(datadir, "transforms.json", white_background=False)

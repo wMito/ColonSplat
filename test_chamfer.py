@@ -23,7 +23,8 @@ from scene.gaussian_model import GaussianModel
 from time import time
 from plyfile import PlyData
 from tqdm import tqdm
-
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.ops import knn_points
 
 
 def save_xyz_to_ply(xyz_points, filename, normals_points=None, chunk_size=10**6, quiet=False):
@@ -73,31 +74,21 @@ end_header
 
             ply_file.write(vertex.tobytes())
 
-def chamfer_distance(pc1, pc2, batch_size=10_000):
-    min_dists_1 = []
-    for i in range(0, pc1.shape[0], batch_size):
-        end_i = min(i + batch_size, pc1.shape[0])
-        dist_chunk = torch.cdist(pc1[i:end_i], pc2, p=2)
-        min_dists_1.append(torch.min(dist_chunk, dim=1)[0])
-        del dist_chunk
-        torch.cuda.empty_cache()
+
+def hd95(pc1, pc2):
+    dist_a_to_b, _, _ = knn_points(pc1, pc2, K=1)
+    dist_a_to_b = torch.sqrt(dist_a_to_b) 
     
-        # Compute pc2 -> pc1 distances in chunks
-        min_dists_2 = []
-        for j in range(0, pc2.shape[0], batch_size):
-            end_j = min(j + batch_size, pc2.shape[0])
-            dist_chunk = torch.cdist(pc2[j:end_j], pc1, p=2)
-            min_dists_2.append(torch.min(dist_chunk, dim=1)[0])
-            del dist_chunk
-            torch.cuda.empty_cache()
-        
-        # Concatenate and compute means
-        dist1 = torch.cat(min_dists_1)
-        dist2 = torch.cat(min_dists_2)
-        
-        chamfer_dist = torch.mean(dist1) + torch.mean(dist2)
-        
-        return chamfer_dist
+    dist_b_to_a, _, _ = knn_points(pc2, pc1, K=1)
+    dist_b_to_a = torch.sqrt(dist_b_to_a)
+    
+    v95_a_to_b = torch.quantile(dist_a_to_b, 0.95, dim=1)
+    v95_b_to_a = torch.quantile(dist_b_to_a, 0.95, dim=1)
+    
+    hd95 = torch.max(v95_a_to_b, v95_b_to_a)
+    
+    return hd95
+
 
 def get_ply(ply_path):
     plydata = PlyData.read(ply_path)
@@ -141,19 +132,43 @@ def test_model(dataset : ModelParams, hyperparam, iteration : int, pipeline : Pi
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree, hyperparam)
         test_plys = Scene(dataset, gaussians, load_iteration=iteration).gt_plys["test"]
-        
-        
+        path_to_plys = f"{dataset.model_path}/test/ours_30000/plys"
+        os.makedirs(path_to_plys, exist_ok=True)
         all_chamfer_distances = []
+        all_hausdorff_distances = []
+        all_hd95_distances = []
+        max_time = len(os.listdir(os.path.split(test_plys[list(test_plys.keys())[0]])[0])) # get number of all plys so it can be used as time
         for time in tqdm(test_plys.keys()):
             gaussians_formated = get_gaussians_for_time(gaussians, time)
-            gaussians_for_time = convert_3dgs_to_pc(gaussians_formated)
+            gaussians_for_time = convert_3dgs_to_pc(gaussians_formated).unsqueeze(0)
 
-            save_xyz_to_ply(gaussians_for_time, f"test_plys/{int(time*300)}.ply", quiet=True)
+            gt_ply = get_ply(test_plys[time]).unsqueeze(0)
 
-            gt_ply = get_ply(test_plys[time])
-            all_chamfer_distances.append(chamfer_distance(gaussians_for_time, gt_ply))
+            chamf_dist = chamfer_distance(gaussians_for_time, gt_ply)
+            haus_dist = chamfer_distance(gaussians_for_time, gt_ply, point_reduction='max')
+            haus95_dist = hd95(gaussians_for_time, gt_ply)
+            print(f"Hausdorff distance for t{int(time*max_time)}:", haus_dist)
+            print(f"Hausdorff 95 distance for t{int(time*max_time)}:", haus95_dist)
+            print(f"Chamfer distance for t{int(time*max_time)}:", chamf_dist)
+
+            save_xyz_to_ply(gaussians_for_time.squeeze(0), f"{path_to_plys}/{int(time*max_time)}.ply", quiet=True)
+            
+            all_chamfer_distances.append(chamf_dist[0])
+            all_hd95_distances.append(haus95_dist)
+            all_hausdorff_distances.append(haus_dist[0])
         chamfer_distance_final = torch.stack(all_chamfer_distances).mean()
+        hausdorff_distance_final = torch.stack(all_hausdorff_distances).mean()
+        hd95_distance_final = torch.stack(all_hd95_distances).mean()
         print("Chamfer distance is ", chamfer_distance_final.item())
+        print("Hausdorff distance is ", hausdorff_distance_final.item())
+        print("Hausdorff 95 distance is ", hd95_distance_final.item())
+        import json
+        with open(f"{dataset.model_path}/test/ours_30000/distance_metrics.json", "w") as f:
+            json.dump({
+                "chamfer_distance": chamfer_distance_final.item(),
+                "hausdorff_distance": hausdorff_distance_final.item(),
+                "hd95_distance": hd95_distance_final.item()
+            }, f, indent=4)
         
 def convert_3dgs_to_pc(gaussians_formated, num_samples_per_gaussian=10, opacity_threshold=0.0):
     """
@@ -182,8 +197,6 @@ def convert_3dgs_to_pc(gaussians_formated, num_samples_per_gaussian=10, opacity_
     if xyz.shape[0] == 0:
         return torch.empty((0, 3), device=xyz.device)
     
-    # Scale number of samples by opacity (more samples for higher opacity)
-    # Normalize opacities to [0, 1] range
     normalized_opacities = (opacities - opacities.min()) / (opacities.max() - opacities.min() + 1e-8)
     samples_per_gaussian = (normalized_opacities * num_samples_per_gaussian).long()
     samples_per_gaussian = torch.clamp(samples_per_gaussian, min=1)
@@ -201,19 +214,10 @@ def convert_3dgs_to_pc(gaussians_formated, num_samples_per_gaussian=10, opacity_
     
     for i in range(xyz.shape[0]):
         n_samples = samples_per_gaussian[i].item()
-        
-        # Sample from unit Gaussian
         samples = torch.randn(n_samples, 3, device=xyz.device)
-        
-        # Scale by the Gaussian's scale parameters
         samples = samples * scales_activated[i:i+1]
-        
-        # Rotate by the Gaussian's rotation
         samples = torch.matmul(samples, rotation_matrices[i].T)
-        
-        # Translate to the Gaussian's center
         samples = samples + xyz[i:i+1]
-        
         all_samples.append(samples)
     
     # Concatenate all samples

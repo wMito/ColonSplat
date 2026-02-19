@@ -177,7 +177,6 @@ def render(viewpoint_camera, pc, pipe, bg_color : torch.Tensor, scaling_modifier
             "visibility_filter" : radii > 0,
             "radii": radii,
             "transformed_points": means3D_final,
-            "transformed_rotations": rotations_final,
-            "transformed_scales": scales_final_flat,
+            "transformed_color": color_final,
             "dcol": dcol}
 
