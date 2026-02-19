@@ -41,7 +41,7 @@ class GaussianModel:
             symm = strip_symmetric(actual_covariance)
             return symm
         
-        self.scaling_activation = torch.exp
+        self.scaling_activation = lambda x: torch.exp(torch.clamp(x, -10, 10)) #torch.exp
         self.scaling_inverse_activation = torch.log
         self.covariance_activation = build_covariance_from_scaling_rotation
         self.opacity_activation = torch.sigmoid
