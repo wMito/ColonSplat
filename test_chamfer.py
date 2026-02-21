@@ -115,6 +115,8 @@ def get_gaussians_for_time(pc, time):
 
     scales_final = pc.scaling_activation(scales_final)
     scales_final_flat = scales_final.clamp_max(0.05*pc.spatial_lr_scale)
+    rotations_final = pc.rotation_activation(rotations_final)
+    opacity_final = pc.opacity_activation(opacity_final)
 
     #covariances = pc.covariance_activation(scales_final, 1., rotations_final)
 
