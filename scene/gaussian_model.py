@@ -544,9 +544,26 @@ class GaussianModel:
     def _prune_optimizer(self, mask):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
-            # if len(group["params"]) > 1:
-            if len(group["params"]) > 1 or group["name"]=='illumination_embeddings':
+            if group["name"] == 'illumination_embeddings':
                 continue
+            
+            if group["name"] == "deformation_table":
+                stored_state = self.optimizer.state.get(group['params'][0], None)
+                if stored_state is not None:
+                    stored_state["exp_avg"] = stored_state["exp_avg"][mask]
+                    stored_state["exp_avg_sq"] = stored_state["exp_avg_sq"][mask]
+                    del self.optimizer.state[group['params'][0]]
+                    group["params"][0] = nn.Parameter((group["params"][0][mask].requires_grad_(True)))
+                    self.optimizer.state[group['params'][0]] = stored_state
+                    optimizable_tensors[group["name"]] = group["params"][0]
+                else:
+                    group["params"][0] = nn.Parameter(group["params"][0][mask].requires_grad_(True))
+                    optimizable_tensors[group["name"]] = group["params"][0]
+                continue
+                
+            if len(group["params"]) > 1:
+                continue
+                
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:
                 stored_state["exp_avg"] = stored_state["exp_avg"][mask]
@@ -565,37 +582,50 @@ class GaussianModel:
         optimizable_tensors = self._prune_optimizer(valid_points_mask)
 
         self._xyz = optimizable_tensors["xyz"]
-        # self._features_dc = optimizable_tensors["f_dc"]
-        # self._features_rest = optimizable_tensors["f_rest"]
         self.features = optimizable_tensors["f_dc"]
-        
         self._opacity = optimizable_tensors["opacity"]
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
+        self._deformation_table = optimizable_tensors["deformation_table"]
+        
         self._deformation_accum = self._deformation_accum[valid_points_mask]
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
-        self._deformation_table = self._deformation_table[valid_points_mask]
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
-        #self.closest_point_indices = self.closest_point_indices[valid_points_mask]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
-            # if len(group["params"])>1:
-            if len(group["params"])>1 or group["name"]=='illumination_embeddings':
+            if group["name"] == 'illumination_embeddings':
                 continue
+                
+            if group["name"] == "deformation_table":
+                extension_tensor = tensors_dict[group["name"]]
+                stored_state = self.optimizer.state.get(group['params'][0], None)
+                if stored_state is not None:
+                    stored_state["exp_avg"] = torch.cat((stored_state["exp_avg"], torch.zeros_like(extension_tensor)), dim=0)
+                    stored_state["exp_avg_sq"] = torch.cat((stored_state["exp_avg_sq"], torch.zeros_like(extension_tensor)), dim=0)
+                    del self.optimizer.state[group['params'][0]]
+                    group["params"][0] = nn.Parameter(torch.cat((group["params"][0], extension_tensor), dim=0).requires_grad_(True))
+                    self.optimizer.state[group['params'][0]] = stored_state
+                    optimizable_tensors[group["name"]] = group["params"][0]
+                else:
+                    group["params"][0] = nn.Parameter(torch.cat((group["params"][0], extension_tensor), dim=0).requires_grad_(True))
+                    optimizable_tensors[group["name"]] = group["params"][0]
+                continue
+                
+            if len(group["params"]) > 1:
+                continue
+                
             assert len(group["params"]) == 1
             extension_tensor = tensors_dict[group["name"]]
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:
                 stored_state["exp_avg"] = torch.cat((stored_state["exp_avg"], torch.zeros_like(extension_tensor)), dim=0)
                 stored_state["exp_avg_sq"] = torch.cat((stored_state["exp_avg_sq"], torch.zeros_like(extension_tensor)), dim=0)
-
                 del self.optimizer.state[group['params'][0]]
                 group["params"][0] = nn.Parameter(torch.cat((group["params"][0], extension_tensor), dim=0).requires_grad_(True))
                 self.optimizer.state[group['params'][0]] = stored_state
-
                 optimizable_tensors[group["name"]] = group["params"][0]
             else:
                 group["params"][0] = nn.Parameter(torch.cat((group["params"][0], extension_tensor), dim=0).requires_grad_(True))
@@ -605,28 +635,21 @@ class GaussianModel:
 
     def densification_postfix(self, new_xyz, new_fea, new_opacities, new_scaling, new_rotation, new_deformation_table):
         d = {"xyz": new_xyz,
-        # "f_dc": new_features_dc,
-        # "f_rest": new_features_rest,
-        "f_dc": new_fea,
-        
-        "opacity": new_opacities,
-        "scaling" : new_scaling,
-        "rotation" : new_rotation,
-        # "deformation": new_deformation,
-        "deformation_table": new_deformation_table
-       }
+            "f_dc": new_fea,
+            "opacity": new_opacities,
+            "scaling" : new_scaling,
+            "rotation" : new_rotation,
+            "deformation_table": new_deformation_table
+        }
 
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
         self._xyz = optimizable_tensors["xyz"]
-        # self._features_dc = optimizable_tensors["f_dc"]
-        # self._features_rest = optimizable_tensors["f_rest"]
         self.features = optimizable_tensors["f_dc"]
-        
         self._opacity = optimizable_tensors["opacity"]
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
+        self._deformation_table = optimizable_tensors["deformation_table"]
         
-        self._deformation_table = torch.cat([self._deformation_table,new_deformation_table],-1)
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self._deformation_accum = torch.zeros((self.get_xyz.shape[0], 3), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")

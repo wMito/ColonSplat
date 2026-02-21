@@ -151,10 +151,10 @@ class OptimizationParams(ParamGroup):
         self.weight_constraint_after = 0.2
         self.weight_decay_iteration = 5000
         self.opacity_reset_interval = 3000
-        self.densify_from_iter = 500
+        self.densify_from_iter = 50000
         self.densification_interval = 500
         self.densify_until_iter = 15_000
-        self.pruning_from_iter = 500
+        self.pruning_from_iter = 50000
         self.pruning_interval = 500
         self.densify_grad_threshold_coarse = 0.0002
         self.densify_grad_threshold_fine_init = 0.0002
@@ -164,9 +164,9 @@ class OptimizationParams(ParamGroup):
         self.opacity_threshold_fine_after = 0.005
         
         self.pruning_interval_fine=500
-        self.pruning_from_iter_fine=1000
+        self.pruning_from_iter_fine=100000
         self.densification_interval_fine=500
-        self.densify_from_iter_fine=1000
+        self.densify_from_iter_fine=100000
         
         self.illumination_embedding_lr: float = 0.001
         self.illumination_embedding_lr_fine: float = 0.001

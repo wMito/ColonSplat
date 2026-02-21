@@ -23,6 +23,7 @@ import imageio.v2 as iio
 import cv2
 import torch
 import fpsample
+from pathlib import Path
 
 
 class CameraInfo(NamedTuple):
@@ -781,7 +782,7 @@ class ColonSplat_Dataset(object):
             fovx = contents["camera_angle_x"]
 
             frames = contents["frames"] 
-            for idx, frame in enumerate(frames):
+            for idx, frame in enumerate(tqdm(frames)):
                 cam_name = os.path.join(path, frame["file_path"])
 
                 # NeRF 'transform_matrix' is a camera-to-world transform
