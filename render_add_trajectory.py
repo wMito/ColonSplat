@@ -30,6 +30,14 @@ from utils.loss_utils import ssim
 
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
+
+
+def mse(a, b):
+    return torch.mean((a - b) ** 2)
+
+
+
+
 def render_custom_trajectory(lookat_folder, white_background=False):
     """Load camera transforms from a lookat subfolder."""
     from scene.endo_loader import ColonSplat_Dataset
@@ -56,12 +64,17 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         
     render_images = []
     gt_images = []
+    render_depths = []
+    gt_depths = []
     for cam_idx, test_cam in enumerate(tqdm(test_cameras, desc=f"  Rendering test", leave=False)):
         small_scales = None
         time_view = test_cam.time
         
         rendering = render(test_cam, gaussians, pipeline, background, time=time_view, override_scales=small_scales)
         render_images.append(rendering["render"].cpu())
+        render_depths.append((rendering["depth"]/ rendering["depth"].max()).cpu())
+        gt_depth = test_cam.depth / test_cam.depth.max()
+        gt_depths.append(gt_depth)
         gt_img = test_cam.original_image[0:3, :, :]
         gt_images.append(gt_img)
     
@@ -88,33 +101,40 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         "SSIM": [],
         "PSNR": [],
         "LPIPS": [],
+        "MSE": []
     }
 
     per_view_metrics = {}
 
-    for idx, (render_img, gt_img) in enumerate(zip(render_images, gt_images)):
+    for idx, (render_img, gt_img, render_depth, gt_depth) in enumerate(zip(render_images, gt_images, render_depths, gt_depths)):
         render_t = render_img.unsqueeze(0).cuda()
         gt_t = gt_img.unsqueeze(0).cuda()
 
         psnr_val = psnr(render_t, gt_t).item()
         ssim_val = ssim(render_t, gt_t).item()
         lpips_val = lpips_score(render_t, gt_t).item()
+        mse_val = mse(render_depth, gt_depth).item()
 
         metrics["PSNR"].append(psnr_val)
         metrics["SSIM"].append(ssim_val)
         metrics["LPIPS"].append(lpips_val)
+        metrics["MSE"].append(mse_val)
 
         per_view_metrics[f"{idx:05d}.png"] = {
             "PSNR": psnr_val,
             "SSIM": ssim_val,
             "LPIPS": lpips_val,
+            "MSE": mse_val
         }
 
     mean_metrics = {
         "PSNR": float(np.mean(metrics["PSNR"])),
         "SSIM": float(np.mean(metrics["SSIM"])),
         "LPIPS": float(np.mean(metrics["LPIPS"])),
+        "MSE": float(np.mean(metrics["MSE"]))
     }
+
+
 
     # ---- Save JSONs ----
     with open(os.path.join(render_path, "metrics.json"), "w") as f:
@@ -127,7 +147,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         f"[{name}] Metrics — "
         f"PSNR: {mean_metrics['PSNR']:.4f}, "
         f"SSIM: {mean_metrics['SSIM']:.4f}, "
-        f"LPIPS: {mean_metrics['LPIPS']:.4f}"
+        f"LPIPS: {mean_metrics['LPIPS']:.4f}, "
+        f"MSE: {mean_metrics['MSE']:.4f}"
     )
 
 def render_sets(dataset : ModelParams, optimization, hyperparam, iteration : int, pipeline : PipelineParams):
