@@ -805,7 +805,7 @@ class ColonSplat_Dataset(object):
                 
 
                 im_data = np.array(image.convert("RGBA"))
-
+                white_background = True
                 bg = np.array([1,1,1]) if white_background else np.array([0, 0, 0])
 
                 norm_data = im_data / 255.0
