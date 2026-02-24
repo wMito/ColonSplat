@@ -26,7 +26,7 @@ bash run_custom_ds.sh
 
 ## Data:  
 
-All data used in our work are available here: https://zenodo.org/records/18763383
+All data used in our work is available here: https://zenodo.org/records/18763383
 
 
 ## Acknowledgements:  
