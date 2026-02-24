@@ -1,4 +1,5 @@
-Proof-of-Concept code for Anatomically-Constrained Colonoscopy Reconstruction of Highly Deformable Scenes
+# ColonSplat: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting 
+Proof-of-Concept Code 
 
 ## Environment
 
@@ -20,4 +21,19 @@ pip install --no-build-isolation submodules/simple-knn
 ## To run training, testing and visualisation simply run:
 ```bash
 bash run.sh
+bash run_custom_ds.sh
 ```
+
+## Data:  
+
+All data used in our work are available here: https://zenodo.org/records/18763383
+
+
+## Acknowledgements:  
+We thank the authors of publicly available repositories: 
+- [ENDO-4DGX](https://github.com/lastbasket/Endo-4DGX). 
+- [EndoPlanar](https://github.com/ThatphumCpre/EndoPlanar)
+- [SurgicalGS](https://github.com/neneyork/SurgicalGS)
+- [Endo-4DGS](https://github.com/lastbasket/Endo-4DGS)
+- [Deform3DGS](https://github.com/jinlab-imvr/Deform3DGS)
+- [RADE-GS](https://github.com/HKUST-SAIL/RaDe-GS)
