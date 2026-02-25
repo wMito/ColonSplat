@@ -37,3 +37,8 @@ We thank the authors of publicly available repositories:
 - [Endo-4DGS](https://github.com/lastbasket/Endo-4DGS)
 - [Deform3DGS](https://github.com/jinlab-imvr/Deform3DGS)
 - [RADE-GS](https://github.com/HKUST-SAIL/RaDe-GS)
+
+
+## Implementation notes on fair comparison with baselines
+- We noticed differnet baselines have differently implemented LPIPS measurement (input normalization). We pass image in range 0-1 and use normalization inside model. We applied the same computation for all baselines (see how we do it in utils/image_utils.py/lpips_score).  
+- For fair comparison of geometry, we do not use densification and pruning for baseline methods on DynamicColon. We mostly do not want to prune Gaussians which could potentially lower the scores CH and HD95 for other baselines. We densely initialize Gaussians with point cloud from Blender which should be sufficient for reconstruction.  

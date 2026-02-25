@@ -116,10 +116,10 @@ def lpips_score(img1, img2, net='alex', format='NCHW'):
 
     if net == 'alex':
         model = lpips_alex.to(img1.device)
-        return model(img1, img2)
+        return model(img1, img2, normalize=True)
     elif net == 'vgg':
         model = lpips_vgg.to(img1.device)
-        return model(img1, img2)
+        return model(img1, img2,normalize=True)
     
 def ssim(img1, img2, window_size = 11, size_average = True, format='NCHW'):
     if format == 'HWC':
