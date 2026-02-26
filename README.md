@@ -1,4 +1,5 @@
-Proof-of-Concept code for Anatomically-Constrained Colonoscopy Reconstruction of Highly Deformable Scenes
+# ColonSplat: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting 
+Proof-of-Concept Code 
 
 ## Environment
 
@@ -20,4 +21,25 @@ pip install --no-build-isolation submodules/simple-knn
 ## To run training, testing and visualisation simply run:
 ```bash
 bash run.sh
+bash run_custom_ds.sh
 ```
+
+## Data:  
+
+All data used in our work is available here: https://zenodo.org/records/18763383
+
+
+## Acknowledgements:  
+We thank the authors of publicly available repositories: 
+- [ENDO-4DGX](https://github.com/lastbasket/Endo-4DGX). 
+- [EndoPlanar](https://github.com/ThatphumCpre/EndoPlanar)
+- [SurgicalGS](https://github.com/neneyork/SurgicalGS)
+- [Endo-4DGS](https://github.com/lastbasket/Endo-4DGS)
+- [Deform3DGS](https://github.com/jinlab-imvr/Deform3DGS)
+- [RADE-GS](https://github.com/HKUST-SAIL/RaDe-GS)
+
+
+## Implementation notes on fair comparison with baselines
+- We noticed diffrent baselines have differently implemented LPIPS measurement (input normalization). We pass image in range 0-1 and use normalization inside model. We applied the same computation for all baselines (see how we do it in utils/image_utils.py/lpips_score).  
+- For fair comparison of geometry, we do not use densification and pruning for baseline methods on DynamicColon. We mostly do not want to prune Gaussians which could potentially lower the scores CH and HD95 for other baselines. We densely initialize Gaussians with point cloud from Blender which should be sufficient for reconstruction.  
+- Baseline methods handle depth differently - some relying on normalized depth, others on metric depth - their original depth losses are not always directly compatible with AnyDepth/ColonCrafter depth maps. This in practice led to convergence issues. To ensure a fair comparison, we apply the same L1 depth loss on normalized depth maps across all methods. We also tune depth loss weights and training iterations for each baseline to obtain the most satisfactory renderings and consistent geometry for each method.
