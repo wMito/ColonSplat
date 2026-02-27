@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ColonSplat Project Page</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #4b5563;
+      --accent: #2563eb;
+      --border: #d1d5db;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.6;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .container {
+      width: min(900px, 88vw);
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+
+    h1, h2 {
+      line-height: 1.3;
+      margin: 0 0 14px;
+    }
+
+    h1 {
+      font-size: clamp(1.4rem, 3.2vw, 2rem);
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    h2 {
+      font-size: clamp(1.2rem, 2.4vw, 1.5rem);
+      margin-top: 28px;
+    }
+
+    .authors {
+      text-align: center;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .authors-line {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .affiliations {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .equal-note {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .abstract {
+      text-align: justify;
+      font-size: 0.95rem;
+    }
+
+    .our {
+      font-family: "Courier New", Courier, monospace;
+      font-weight: 600;
+    }
+
+    .cite-box {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: #f9fafb;
+      color: var(--muted);
+      font-family: "Courier New", Courier, monospace;
+      white-space: pre-wrap;
+    }
+
+    .card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      margin-top: 28px;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin: 8px 0 16px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--text);
+      background: #f3f4f6;
+      transition: border-color 0.2s ease, transform 0.1s ease;
+    }
+
+    .badge:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .badge-empty {
+      opacity: 0.75;
+      cursor: default;
+    }
+
+    .media {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #f9fafb;
+      display: block;
+      margin-top: 12px;
+    }
+
+    .video-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 12px;
+    }
+
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <h1><span class="our">ColonSplat</span>: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting</h1>
+      <div class="authors">
+        <div class="authors-line">
+          Weronika Smolak-Dyzewska<sup>1,*</sup>, Joanna Kaleta<sup>2,3,*</sup>, Diego Dall'Alba<sup>4</sup>, Przemyslaw Spurek<sup>1</sup>
+        </div>
+      </div>
+      <div class="affiliations">
+        <div><sup>1</sup> Jagiellonian University, <sup>2</sup> SANO - Centre for Computational Personalised Medicine</div>
+        <div><sup>3</sup> Warsaw University of Technology, <sup>4</sup> University of Verona</div>
+      </div>
+      <div class="equal-note"><sup>*</sup> Equal contribution</div>
+      <div class="badges">
+        <a class="badge badge-empty" href="#" aria-label="arXiv link placeholder">arXiv (coming soon)</a>
+        <a class="badge badge-empty" href="#" aria-label="Code link placeholder">Code (coming soon)</a>
+        <a class="badge" href="https://zenodo.org/uploads/18763383" target="_blank" rel="noopener noreferrer">Zenodo Dataset</a>
+      </div>
+      <img class="media" src="fig1.png" alt="ColonSplat overview figure" />
+      <p class="abstract">
+        Accurate 3D reconstruction of colonoscopy data, accounting for complex peristaltic movements, is crucial for advanced surgical navigation and retrospective diagnostics. While recent novel view synthesis and 3D reconstruction methods have demonstrated remarkable success in general endoscopic scenarios, they struggle in the highly constrained environment of the colon. Due to the limited field of view of a camera moving through an actively deforming tubular structure, existing endoscopic methods reconstruct the colon appearance only for initial camera trajectory. However, the underlying anatomy remains largely static; instead of updating Gaussians' spatial coordinates (xyz), these methods encode deformation through either rotation, scale or opacity adjustments. In this paper, we first present a benchmark analysis of state-of-the-art dynamic endoscopic methods for realistic colonoscopic scenes, showing that they fail to model true anatomical motion. To enable rigorous evaluation of global reconstruction quality, we introduce DynamicColon, a synthetic dataset with ground-truth point clouds at every timestep. Building on these insights, we propose <span class="our">ColonSplat</span>, a dynamic Gaussian Splatting framework that captures peristaltic-like motion while preserving global geometric consistency, achieving superior geometric fidelity on C3VDv2 and DynamicColon datasets.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Method overview</h2>
+      <img class="media" src="fig2.png" alt="ColonSplat method figure" />
+    </section>
+
+    <section class="card">
+      <h2>Qualitative comparison with existing methods</h2>
+      <p>
+        <span class="our">ColonSplat</span> captures true colon-wall motion significantly better than existing baselines, where motion is mostly encoded through rotation and scale while Gaussian centers do not follow the underlying anatomical deformation.
+      </p>
+      <div class="video-grid">
+        <div>
+          <video class="media" src="c1_sigmoid1_t4_comparison.mp4" controls loop playsinline muted></video>
+        </div>
+        <div>
+          <video class="media" src="c1_sigmoid2_t4_comparison.mp4" controls loop playsinline muted></video>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Ablation Study</h2>
+      <video class="media" src="ablation.mp4" controls loop playsinline muted></video>
+    </section>
+
+    <section class="card">
+      <h2>Acknowledgments</h2>
+      <p>
+        We thank the authors of publicly available repositories:<br />
+        <a href="https://github.com/lastbasket/Endo-4DGX" target="_blank" rel="noopener noreferrer">ENDO-4DGX</a>, <a href="https://github.com/ThatphumCpre/EndoPlanar" target="_blank" rel="noopener noreferrer">EndoPlanar</a>, <a href="https://github.com/neneyork/SurgicalGS" target="_blank" rel="noopener noreferrer">SurgicalGS</a>, <a href="https://github.com/lastbasket/Endo-4DGS" target="_blank" rel="noopener noreferrer">Endo-4DGS</a>, <a href="https://github.com/jinlab-imvr/Deform3DGS" target="_blank" rel="noopener noreferrer">Deform3DGS</a>, and <a href="https://github.com/HKUST-SAIL/RaDe-GS" target="_blank" rel="noopener noreferrer">RADE-GS</a>.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>If you find this work useful, please consider citing as:</h2>
+      <div class="cite-box">@article{colonsplat_2026,
+  title   = {<span class="our">ColonSplat</span>: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting},
+  author  = {Smolak-Dyzewska, Weronika and Kaleta, Joanna and Dall'Alba, Diego and Spurek, Przemyslaw},
+  journal = {arXiv},
+  year    = {2026},
+  note    = {Citation info placeholder (arXiv link coming soon)}
+}</div>
+    </section>
+  </main>
+</body>
+</html>
