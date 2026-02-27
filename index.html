@@ -7,7 +7,6 @@
   <style>
     :root {
       --bg: #ffffff;
-      --card: #ffffff;
       --text: #1f2937;
       --muted: #4b5563;
       --accent: #2563eb;
@@ -55,7 +54,7 @@
     }
 
     .authors-line {
-      font-size: 1rem;
+      font-size: 1.05rem;
       font-weight: 600;
       margin-bottom: 6px;
     }
@@ -63,7 +62,7 @@
     .affiliations {
       text-align: center;
       color: var(--muted);
-      font-size: 0.95rem;
+      font-size: 1rem;
       line-height: 1.5;
       margin-bottom: 8px;
     }
@@ -71,18 +70,24 @@
     .equal-note {
       text-align: center;
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       margin-bottom: 6px;
     }
 
     p {
       margin: 0;
       color: var(--muted);
+      font-size: 1.03rem;
     }
 
     .abstract {
       text-align: justify;
-      font-size: 0.95rem;
+      font-size: 0.98rem;
+    }
+
+    .abstract-heading {
+      margin-top: 24px;
+      margin-bottom: 10px;
     }
 
     .our {
@@ -99,6 +104,7 @@
       color: var(--muted);
       font-family: "Courier New", Courier, monospace;
       white-space: pre-wrap;
+      font-size: 0.95rem;
     }
 
     .card {
@@ -150,13 +156,18 @@
       margin-top: 12px;
     }
 
+    .figure-media {
+      width: min(84%, 760px);
+      margin-left: auto;
+      margin-right: auto;
+    }
+
     .video-grid {
       display: flex;
       flex-direction: column;
       gap: 14px;
       margin-top: 12px;
     }
-
   </style>
 </head>
 <body>
@@ -178,7 +189,8 @@
         <a class="badge badge-empty" href="#" aria-label="Code link placeholder">Code (coming soon)</a>
         <a class="badge" href="https://zenodo.org/uploads/18763383" target="_blank" rel="noopener noreferrer">Zenodo Dataset</a>
       </div>
-      <img class="media" src="fig1.png" alt="ColonSplat overview figure" />
+      <img class="media figure-media" src="webpage/fig1.png" alt="ColonSplat overview figure" />
+      <h2 class="abstract-heading">Abstract</h2>
       <p class="abstract">
         Accurate 3D reconstruction of colonoscopy data, accounting for complex peristaltic movements, is crucial for advanced surgical navigation and retrospective diagnostics. While recent novel view synthesis and 3D reconstruction methods have demonstrated remarkable success in general endoscopic scenarios, they struggle in the highly constrained environment of the colon. Due to the limited field of view of a camera moving through an actively deforming tubular structure, existing endoscopic methods reconstruct the colon appearance only for initial camera trajectory. However, the underlying anatomy remains largely static; instead of updating Gaussians' spatial coordinates (xyz), these methods encode deformation through either rotation, scale or opacity adjustments. In this paper, we first present a benchmark analysis of state-of-the-art dynamic endoscopic methods for realistic colonoscopic scenes, showing that they fail to model true anatomical motion. To enable rigorous evaluation of global reconstruction quality, we introduce DynamicColon, a synthetic dataset with ground-truth point clouds at every timestep. Building on these insights, we propose <span class="our">ColonSplat</span>, a dynamic Gaussian Splatting framework that captures peristaltic-like motion while preserving global geometric consistency, achieving superior geometric fidelity on C3VDv2 and DynamicColon datasets.
       </p>
@@ -186,7 +198,7 @@
 
     <section class="card">
       <h2>Method overview</h2>
-      <img class="media" src="fig2.png" alt="ColonSplat method figure" />
+      <img class="media figure-media" src="webpage/fig2.png" alt="ColonSplat method figure" />
     </section>
 
     <section class="card">
@@ -196,17 +208,17 @@
       </p>
       <div class="video-grid">
         <div>
-          <video class="media" src="c1_sigmoid1_t4_comparison.mp4" controls loop playsinline muted></video>
+          <video class="media" src="webpage/c1_sigmoid1_t4_comparison.mp4" controls loop playsinline muted></video>
         </div>
         <div>
-          <video class="media" src="c1_sigmoid2_t4_comparison.mp4" controls loop playsinline muted></video>
+          <video class="media" src="webpage/c1_sigmoid2_t4_comparison.mp4" controls loop playsinline muted></video>
         </div>
       </div>
     </section>
 
     <section class="card">
       <h2>Ablation Study</h2>
-      <video class="media" src="ablation.mp4" controls loop playsinline muted></video>
+      <video class="media" src="webpage/ablation.mp4" controls loop playsinline muted></video>
     </section>
 
     <section class="card">
