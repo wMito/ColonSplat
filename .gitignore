@@ -1,0 +1,5 @@
+# Webpage-only branch: ignore everything except page assets.
+*
+!webpage/
+!webpage/**
+!.gitignore
