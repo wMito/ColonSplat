@@ -58,15 +58,12 @@ class GaussianModel:
         self.color_emb_dim = 16
         self.args.color_emb_dim = self.color_emb_dim
         self._deformation = deform_network(args)
-        self.use_deformation_filt = args.use_deformation_filt
         self.deformation_perc = args.deformation_perc
 
         self._deformation_table = torch.empty(0)
         # self._features_dc = torch.empty(0)
         # self._features_rest = torch.empty(0)
         self.features = torch.empty(0)
-        self.illumination_embeddings = torch.empty(0, args.illumination_embedding_dim, \
-            dtype=torch.float32, requires_grad=True)
         
         self._scaling = torch.empty(0)
         self._rotation = torch.empty(0)
@@ -238,8 +235,7 @@ class GaussianModel:
         # self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
         # self._features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
         self.features = nn.Parameter(features.requires_grad_(True))
-        self.illumination_embeddings = nn.Parameter(self.illumination_embeddings.requires_grad_(True)).cuda()
-        
+
         self._scaling = nn.Parameter(scales.requires_grad_(True))
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
@@ -290,7 +286,6 @@ class GaussianModel:
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
-        self._deformation_accum = torch.zeros((self.get_xyz.shape[0],3),device="cuda")
         
         l = [
             {'params': [self._xyz], 'lr': training_args.position_lr_init*self.spatial_lr_scale, "name": "xyz"},
@@ -307,10 +302,6 @@ class GaussianModel:
             {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
             {'params': [self._deformation_table], 'lr': training_args.feature_lr, "name": "deformation_table"}
         ]
-        
-        # if self.illumination_embeddings is not None:
-        #     l.append({'params': [self.illumination_embeddings], 'lr': training_args.illumination_embedding_lr, \
-        #         "name": "illumination_embeddings", "weight_decay": training_args.illumination_embedding_regularization})
 
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
         
@@ -327,28 +318,14 @@ class GaussianModel:
                                                     lr_delay_mult=training_args.deformation_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps) 
         
-        
-        self.embedding_scheduler_args = get_expon_lr_func(lr_init=training_args.illumination_embedding_lr_fine,
-                                                    lr_final=training_args.illumination_embedding_lr_fine_final,
-                                                    lr_delay_mult=training_args.deformation_lr_delay_mult,
-                                                    max_steps=training_args.position_lr_max_steps)      
+    
     def update_lr(self, name, lr):
         for g in self.optimizer.param_groups:
             if g['name']==name:
                 g['lr'] = lr
         
-    def set_num_training_images(self, num_images):
-        if self.illumination_embeddings is not None:
-            self._resize_parameter("illumination_embeddings", (num_images, self.illumination_embeddings.shape[1]))
-            self.illumination_embeddings.data.normal_(0, 0.01)
             
-    
-    def get_embedding(self, train_image_id=None):
-        if self.illumination_embeddings is None:
-            return None
-        if train_image_id is not None:
-            return self.illumination_embeddings[train_image_id]
-        return torch.zeros_like(self.illumination_embeddings[0])
+
     
     def _resize_parameter(self, name, shape):
         tensor = getattr(self, name)
@@ -385,10 +362,6 @@ class GaussianModel:
                 lr = self.deformation_scheduler_args(iteration)
                 param_group['lr'] = lr
                 # return lr
-            if stage == 'fine':
-                if param_group["name"] == "illumination_embeddings":
-                    lr = self.embedding_scheduler_args(iteration)
-                    param_group['lr'] = lr
                 
 
     def construct_list_of_attributes(self):
@@ -423,27 +396,16 @@ class GaussianModel:
         if os.path.exists(os.path.join(path, "deformation_table.pth")):
             self._deformation_table = torch.load(os.path.join(path, "deformation_table.pth"),map_location="cuda")
             
-        self._deformation_accum = torch.zeros((self.get_xyz.shape[0],3),device="cuda")
-        if os.path.exists(os.path.join(path, "deformation_accum.pth")):
-            self._deformation_accum = torch.load(os.path.join(path, "deformation_accum.pth"),map_location="cuda")
-        
+
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         
         if os.path.exists(os.path.join(path, "closest_point_indices.pth")):
             self.closest_point_indices = torch.load(os.path.join(path,"closest_point_indices.pth"),map_location="cuda")
         
-        self.illumination_embeddings = torch.load(os.path.join(path,"embedding.pth"),map_location="cuda")
-
 
     def save_deformation(self, path):
         torch.save(self._deformation.state_dict(),os.path.join(path, "deformation.pth"))
         torch.save(self._deformation_table,os.path.join(path, "deformation_table.pth"))
-        torch.save(self._deformation_accum,os.path.join(path, "deformation_accum.pth"))
-        torch.save(self.closest_point_indices,os.path.join(path, "closest_point_indices.pth"))
-
-        
-    def save_embedding(self, path):
-        torch.save(self.illumination_embeddings, os.path.join(path, "embedding.pth"))
 
     def load_ply(self, path):
         plydata = PlyData.read(path)
@@ -527,7 +489,7 @@ class GaussianModel:
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
-            if len(group["params"]) > 1 or group["name"]=='illumination_embeddings':
+            if len(group["params"]) > 1:
                 continue
             if group["name"] == name:
                 stored_state = self.optimizer.state.get(group['params'][0], None)
@@ -544,8 +506,6 @@ class GaussianModel:
     def _prune_optimizer(self, mask):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
-            if group["name"] == 'illumination_embeddings':
-                continue
             
             if group["name"] == "deformation_table":
                 stored_state = self.optimizer.state.get(group['params'][0], None)
@@ -588,7 +548,6 @@ class GaussianModel:
         self._rotation = optimizable_tensors["rotation"]
         self._deformation_table = optimizable_tensors["deformation_table"]
         
-        self._deformation_accum = self._deformation_accum[valid_points_mask]
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
@@ -596,8 +555,6 @@ class GaussianModel:
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
-            if group["name"] == 'illumination_embeddings':
-                continue
                 
             if group["name"] == "deformation_table":
                 extension_tensor = tensors_dict[group["name"]]
@@ -651,7 +608,6 @@ class GaussianModel:
         self._deformation_table = optimizable_tensors["deformation_table"]
         
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
-        self._deformation_accum = torch.zeros((self.get_xyz.shape[0], 3), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         # if new_xyz.shape[0]>0:
@@ -741,23 +697,6 @@ class GaussianModel:
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
 
-    @torch.no_grad()
-    def update_deformation_table(self,threshold):
-        raise NotImplemented
-        # print("origin deformation point nums:",self._deformation_table.sum())
-        self._deformation_table = torch.gt(self._deformation_accum.max(dim=-1).values/100,threshold)
-
-    def print_deformation_weight_grad(self):
-        for name, weight in self._deformation.named_parameters():
-            if weight.requires_grad:
-                if weight.grad is None:
-                    
-                    print(name," :",weight.grad)
-                else:
-                    if weight.grad.mean() != 0:
-                        print(name," :",weight.grad.mean(), weight.grad.min(), weight.grad.max())
-        print("-"*50)
-    
     def _plane_regulation(self):
         multi_res_grids = self._deformation.deformation_net.grid.grids
         total = 0
@@ -802,68 +741,3 @@ class GaussianModel:
     def compute_regulation(self, time_smoothness_weight, l1_time_planes_weight, plane_tv_weight):
         return plane_tv_weight * self._plane_regulation() + time_smoothness_weight * self._time_regulation() + l1_time_planes_weight * self._l1_regulation()
     
-    def optimize_embeddings(self, viewpoint_cams, dataset_param, training_args, pipe):
-        num_images = len(viewpoint_cams)
-        with torch.enable_grad():
-        
-            illumination_embeddings_test = torch.zeros((num_images, self.args.illumination_embedding_dim), \
-                dtype=torch.float32, requires_grad=True).cuda()
-            illumination_embeddings_test = nn.Parameter(illumination_embeddings_test.requires_grad_(True))
-            training_args.illumination_embedding_lr = 0.01
-            training_args.illumination_embedding_lr_final = 0.001
-            print('lr:', training_args.illumination_embedding_lr)
-            illumination_embeddings_test.data.normal_(0, 0.01)
-            # l = [{'params': , 'lr': , \
-            #         "name": "illumination_embeddings_test", "weight_decay": training_args.illumination_embedding_regularization}]
-            optimizer_test = torch.optim.Adam([illumination_embeddings_test], lr=training_args.illumination_embedding_lr)
-            gs_params = self.get_param()
-            # for i in gs_params:
-            #     if isinstance(i, list):
-            #         for j in i:
-            #             j.requires_grad_(False)
-            #         continue
-            #     i.requires_grad_(False)
-            iters = 1000
-            
-            embedding_test_scheduler_args = get_expon_lr_func(lr_init=training_args.illumination_embedding_lr,
-                                                        lr_final=training_args.illumination_embedding_lr_final,
-                                                        lr_delay_mult=training_args.deformation_lr_delay_mult,
-                                                        max_steps=iters)
-             
-            bg_color = [1, 1, 1] if dataset_param.white_background else [0, 0, 0]
-            progress_bar = tqdm(range(iters), desc="Optimization")
-            
-            def update_lr(optimizer, iteration, scheduler):
-                for param_group in optimizer.param_groups:
-                    lr = scheduler(iteration)
-                    param_group['lr'] = lr
-            
-            loss_total = 0
-            for idx, i in enumerate(range(iters)):
-                viewpoint_cam = viewpoint_cams[i%num_images]
-                embedding = illumination_embeddings_test[viewpoint_cam.id][None]
-                background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
-                render_pkg = render(viewpoint_cam, self, pipe, background, stage='fine', embedding=embedding)
-                gt_images = viewpoint_cam.original_image.cuda().float()[None]
-                masks = viewpoint_cam.mask.cuda()[None]
-                images_concealing = render_pkg['render_restored'][None]
-                _, _, h, w = masks.shape
-                half_mask = masks
-                half_mask[:, :, :, ::w//2] = 0
-                
-                loss = l1_loss(images_concealing, gt_images, half_mask)
-                loss_total += loss.item()
-                # print(loss_total)
-                loss.backward()
-                optimizer_test.step()
-                optimizer_test.zero_grad(set_to_none = True)
-                update_lr(optimizer_test, idx, embedding_test_scheduler_args)
-                
-                if (idx+1) % num_images == 0:
-                    progress_bar.set_postfix({'Loss': f'{loss_total/num_images:.7f}'})
-                    loss_total = 0
-                    progress_bar.update(num_images)
-        
-            progress_bar.close()
-        
-        return illumination_embeddings_test

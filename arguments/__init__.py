@@ -104,13 +104,12 @@ class ModelHiddenParams(ParamGroup):
         self.no_dx=False
         self.no_ds=False
         self.no_dr=False
-        self.no_do=False
+        
         self.no_dcol = False
-        self.illumination_embedding_dim = 32
+        self.use_do=False
 
-        self.use_deformation_filt = False
         self.deformation_perc = 0.5
-        self.use_color_emb = False
+        self.no_color_emb = False
         
         super().__init__(parser, "ModelHiddenParams")
         
@@ -134,14 +133,6 @@ class OptimizationParams(ParamGroup):
         self.deformation_lr_delay_mult = 0.01
         self.grid_lr_init = 0.001 #0.0016
         self.grid_lr_final = 0.0001 #0.00016
-        
-        # self.region_lr = 0.001
-        # self.region_lr_fine = 0.001
-        # self.region_lr_fine_final = 0.00001
-        
-        # self.spatial_lr = 0.001
-        # self.spatial_lr_fine = 0.001
-        # self.spatial_lr_fine_final = 0.00001
         
         
         self.percent_dense = 0.01
@@ -168,20 +159,14 @@ class OptimizationParams(ParamGroup):
         self.densification_interval_fine=500
         self.densify_from_iter_fine=100000
         
-        self.illumination_embedding_lr: float = 0.001
-        self.illumination_embedding_lr_fine: float = 0.001
-        self.illumination_embedding_lr_fine_final: float = 0.00001
-        
         
         self.control_weight = 1e-3 #not used, idk whats that
         self.depth_weight=0.25
         self.tv_weight=0.001 # we use tv only on RGB images, not on depth, depth breaks!
         self.knn_weight=0.01
         self.dcol_weight=0.005
-        self.centerline_weight = 0.0
         self.col_smooth_weight = 0.0001
 
-        self.illumination_embedding_regularization: float = 0.0
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

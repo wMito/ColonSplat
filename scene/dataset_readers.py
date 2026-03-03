@@ -12,10 +12,9 @@
 import os
 import sys
 from PIL import Image
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
-import torchvision.transforms as transforms
 import copy
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import numpy as np
@@ -27,7 +26,6 @@ from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 from utils.general_utils import PILtoTorch
 from tqdm import tqdm
-from utils.centerline_utils import compute_centerline_from_points, save_pcd_with_centerline
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -50,8 +48,6 @@ class SceneInfo(NamedTuple):
     nerf_normalization: dict
     ply_path: str
     maxtime: int
-    embedding_info: dict = None #TODO: delete this
-    centerline: Optional[object] = None
     gt_plys: list = None
 
 def getNerfppNorm(cam_info):
@@ -213,7 +209,6 @@ def readEndoNeRFInfo(datadir, mode):
     test_cam_infos = endo_dataset.format_infos(split="test")
     # video_cam_infos = endo_dataset.format_infos(split="video")
     video_cam_infos = None
-    embedding_info = endo_dataset.embedding_info
     # get normalizations
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
@@ -239,8 +234,7 @@ def readEndoNeRFInfo(datadir, mode):
                            video_cameras=video_cam_infos,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path,
-                           maxtime=maxtime,
-                           embedding_info=embedding_info)
+                           maxtime=maxtime)
 
     return scene_info
     
@@ -300,7 +294,6 @@ def readC3VDInfo(datadir, mode='monocular'):
 
     ply_path = os.path.join(datadir, "points3d.ply")
     
-    embedding_info = endo_dataset.embedding_info
     try:
         pcd = fetchPly(ply_path)
     except:
@@ -313,22 +306,13 @@ def readC3VDInfo(datadir, mode='monocular'):
     # get the maximum time
     maxtime = endo_dataset.get_maxtime()
 
-    centerline = compute_centerline_from_points(np.asarray(pcd.points),train_cam_infos)
-    save_pcd_with_centerline(
-            pcd,
-            centerline,
-            os.path.join(datadir, "points_with_centerline.ply"),
-        )
-    
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
                            video_cameras=None,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path,
-                           maxtime=maxtime,
-                           embedding_info=embedding_info,
-                           centerline=centerline)
+                           maxtime=maxtime)
 
     return scene_info
 

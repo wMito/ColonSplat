@@ -67,12 +67,7 @@ class Scene:
         print("Loading Video Cameras")
         self.video_camera = scene_info.video_cameras
         
-        self.embedding_info = scene_info.embedding_info
-        
-        # Open a file in write mode
-        with open(os.path.join(self.model_path,'embedding_info.json'), 'w') as file:
-            # Serialize and write the Python object to the file
-            json.dump(self.embedding_info, file, indent=4)
+    
             
         xyz_max = scene_info.point_cloud.points.max(axis=0)
         xyz_min = scene_info.point_cloud.points.min(axis=0)
@@ -94,11 +89,9 @@ class Scene:
         else:
             if args.extra_mark == 'endonerf':
                 self.gaussians.create_from_pcd(scene_info.point_cloud, args.camera_extent, self.maxtime)
-                self.gaussians.set_num_training_images(len(self.train_camera))
                 
             else:
                 self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent, self.maxtime)
-        self.centerline = scene_info.centerline
 
     def save(self, iteration, stage):
         if stage == "coarse":
@@ -107,8 +100,6 @@ class Scene:
             point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
         self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
         self.gaussians.save_deformation(point_cloud_path)
-        # self.gaussians.save_concealing(point_cloud_path)
-        self.gaussians.save_embedding(point_cloud_path)
         
     
     def getTrainCameras(self, scale=1.0):

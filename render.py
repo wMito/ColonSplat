@@ -178,8 +178,6 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     gt_array = (gt_array*255).clip(0, 255).numpy().astype(np.uint8)
     gt_array = np.ascontiguousarray(gt_array)
     gt_array = gt_array[..., :3]
-    # [cv2.putText(f, f"GT - test video", (20,40),
-    #         cv2.FONT_HERSHEY_TRIPLEX, 1.5, (0,255,0), 2) for f in gt_array]
     imageio.mimwrite(f"{videos_path}/gt_video.mp4", gt_array, fps=30, quality=8)
 
 

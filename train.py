@@ -7,8 +7,6 @@
 # under the terms of the LICENSE.md file.
 #
 # For inquiries contact  george.drettakis@inria.fr
-#
-import torchvision
 import numpy as np
 import random
 import os
@@ -19,23 +17,16 @@ from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
-import uuid
-import cv2
 from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams, ModelHiddenParams
-from torch.utils.data import DataLoader
 from utils.timer import Timer
-from torchmetrics.functional.regression import pearson_corrcoef
 from utils import helper
-from utils.resnet_swag import content_loss
-from torchvision import transforms, models
 
 
 import lpips
 from utils.scene_utils import render_training_image
-from time import time
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 
 try:
@@ -44,21 +35,11 @@ try:
 except ImportError:
     TENSORBOARD_FOUND = False
 
-# resnet = models.resnet50(pretrained=True)
-# resnet.to('cuda').eval().float()
-
 
 def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_iterations, 
                          checkpoint_iterations, checkpoint, debug_from,
                          gaussians, scene, stage, tb_writer, train_iter, timer):
     
-    # centerline = scene.centerline
-    # if centerline is not None:
-    #     cl = torch.from_numpy(centerline).float().cuda()
-    #     cl_tangent = cl[1:] - cl[:-1]
-    #     cl_tangent = cl_tangent / (cl_tangent.norm(dim=1, keepdim=True) + 1e-8)
-    # scene.centerline_tangent = cl_tangent
-    # scene.centerline_points = cl[:-1]
 
 
     first_iter = 0
@@ -208,27 +189,6 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         loss_clusters = opt.knn_weight * per_point_sq_dist.mean()
         loss += loss_clusters
 
-        ## NORMAL CLUSTER LOSS - very slow so comment out
-        # dir_pp_camera = (transformed_means - viewpoint_cam.camera_center.repeat(transformed_means.shape[0], 1).cuda())
-        # transformed_normals = gaussians.get_gaussian_normal(transformed_rotations,transformed_scales, view_dir = dir_pp_camera)
-
-        # render_tmp = render(viewpoint_cam, gaussians, pipe, background, stage=stage, override_color=(transformed_normals+1/2))
-        # render_tmp["render"]
-        # rendering = render_tmp["render"].clamp(0,1)
-        # torchvision.utils.save_image(rendering, os.path.join("/home/jk/colon_dynamic/thrash", 'normal_iter.png'))
-        
-
-        # cluster_q = transformed_normals[idx]                         # (N, K, 4)
-        # cluster_q_mean = cluster_q.mean(dim=1)     # (N,4)
-        # cluster_q_mean = cluster_q_mean / (cluster_q_mean.norm(dim=-1, keepdim=True) + 1e-8)
-
-        # center_q = transformed_normals[torch.arange(cluster_q_mean.shape[0], device=transformed_normals.device)]
-
-        # dot = torch.sum(center_q * cluster_q_mean, dim=-1).abs().clamp(max=1.0)
-        # rot_dist = 1.0 - dot
-
-        # loss_rot_smooth = opt.knn_weight * rot_dist.mean()/5
-
         ### MINIMIZE DCOLOR UPDATE - DCOL LOSS
         loss_dcol = torch.mean(dcol ** 2)*opt.dcol_weight
         loss += loss_dcol
@@ -237,22 +197,6 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
         loss_color_smooth = opt.col_smooth_weight * ((transformed_color - transformed_color.mean(dim=0)) ** 2).mean()
         loss += loss_color_smooth
 
-        
-        # ### CENTERLINE LOSS
-        # xyz0 = gaussians._xyz          # (N,3)
-        # xyz1 = transformed_means      # (N,3)
-
-        # delta = xyz1 - xyz0            # Δxyz
-        # dist2 = torch.cdist(
-        #     xyz0,
-        #     scene.centerline_points
-        # )
-
-        # closest_idx = torch.argmin(dist2, dim=1)
-        # tangent = scene.centerline_tangent[closest_idx]
-        # delta_parallel = torch.sum(delta * tangent, dim=1)
-        # loss_centerline = (delta_parallel ** 2).mean()*opt.centerline_weight #0.05
-        # loss += loss_centerline
 
         ###  LOSS TV, breaks our colon so opt.tv_weight set to zero by default
         depth_tvloss = TV_loss(rendered_depths)
@@ -290,7 +234,6 @@ def scene_reconstruction(dataset, opt, hyper, pipe, testing_iterations, saving_i
                 string_dict = {"Loss": f"{ema_loss_for_log:.{7}f}",
                                 "psnr": f"{psnr_:.{2}f}",
                                 "point":f"{total_point}"}
-                # if stage == "fine" and hyper.time_smoothness_weight != 0:
                 progress_bar.set_postfix(string_dict)
                 progress_bar.update(10)
             if iteration == train_iter:

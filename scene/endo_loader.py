@@ -71,7 +71,6 @@ class EndoNeRF_Dataset(object):
         self.video_idxs = [i for i in range(n_frames)]
         
         self.maxtime = 1.0
-        self.embedding_info = {}
         
     def load_meta(self):
         """
@@ -158,11 +157,7 @@ class EndoNeRF_Dataset(object):
             # fov
             FovX = focal2fov(self.focal[0], self.img_wh[0])
             FovY = focal2fov(self.focal[1], self.img_wh[1])
-            if split == 'train':
-                self.embedding_info[idx] = {'train_count':count, \
-                    'illu_type':illu_type, \
-                        'file_name':self.image_paths[idx]}
-            
+
             cameras.append(Camera(idx=count,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image, prior=color_adjusted, \
                             depth=depth, mask=mask, gt_alpha_mask=None, reference=reference,
                           image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time,illu_type=illu_type,
@@ -276,7 +271,6 @@ class C3VD_Dataset(object):
         self.transform = T.ToTensor()
         self.white_bg = False
         self.mode = mode
-        self.embedding_info = {}
 
         self.load_meta()
         print(f"meta data loaded, total image:{len(self.image_paths)}")
@@ -364,15 +358,7 @@ class C3VD_Dataset(object):
             depth = torch.from_numpy(depth).float()
             # color
             color = np.array(Image.open(self.image_paths[idx]))/255.0
-            # color_adjusted = np.array(Image.open(self.image_paths[idx].replace('images_mix', 'images_mix_adjusted')))/255.0
-            # color_adjusted = np.array(Image.open('/home/lastbasket/code/llgs/Endo-4DGX/refined/data/C3VD/cecum_t1_b/color_adjusted/0000_color_adjusted.png'))/255.0
-            #color_adjusted = np.array(Image.open(self.image_paths[idx].replace('color', 'color_adjusted')))/255.0
-            
-            #illu_type = 'low_light' if color_adjusted.mean()>color.mean() else 'over_exposure'
-            
-            # mask = np.ones_like(depth)
-            # mask = self.transform(mask).bool()
-            
+    
             image = self.transform(color).float()
             # times
             time = torch.tensor(self.image_times[idx]).float().cuda()
@@ -381,15 +367,9 @@ class C3VD_Dataset(object):
             # fov
             FovX = focal2fov(self.focal[0], self.img_wh[0])
             FovY = focal2fov(self.focal[1], self.img_wh[1])
-
-            if split == 'train':
-                self.embedding_info[idx] = {'train_count':count, \
-                    #'illu_type':illu_type, \
-                        'file_name':self.image_paths[idx]}
-            
-            cameras.append(Camera(idx=count,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image,  #prior=color_adjusted, \
+            cameras.append(Camera(idx=count,R=R,T=T,FoVx=FovX,FoVy=FovY,image=image,  
                             depth=depth, gt_alpha_mask=None, mask=None,
-                          image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time, #,illu_type=illu_type,
+                          image_name=f"{idx}",uid=idx,data_device=torch.device("cuda"),time=time,
                           ))
             count += 1
         return cameras

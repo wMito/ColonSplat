@@ -33,14 +33,13 @@ class Deformation(nn.Module):
         self.rotations_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 4))
         self.opacity_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 1))
 
-        if self.args.use_color_emb:
+        if self.args.no_color_emb:
+            self.use_color_emb = False
+            self.color_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 3))
+        else:
             self.use_color_emb = True
             in_dim = self.W + self.args.color_emb_dim 
             self.color_deform = nn.Sequential(nn.Linear(in_dim, self.W), nn.ReLU(), nn.Linear(self.W, self.W), nn.ReLU(), nn.Linear(self.W, 3))
-        else:
-            self.use_color_emb = False
-            self.color_deform = nn.Sequential(nn.ReLU(),nn.Linear(self.W,self.W),nn.ReLU(),nn.Linear(self.W, 3))
-
         
         for name, param in self.feature_out.named_parameters():
             if 'weight' in name:
@@ -117,11 +116,11 @@ class Deformation(nn.Module):
 
             rotations = base + dr
             
-        if self.args.no_do:
-            opacity = opacity_emb[:,:1] 
-        else:
+        if self.args.use_do:
             do = self.opacity_deform(hidden) 
             opacity = opacity_emb[:,:1] + do
+        else:
+            opacity = opacity_emb[:,:1] 
         
         ## COLOR 
         if self.args.no_dcol:
