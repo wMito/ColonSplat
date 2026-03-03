@@ -118,14 +118,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
             )
             count += 1
 
-    # count = 0
-    # print("writing mask images.")
-    # if len(mask_list) != 0:
-    #     for image in tqdm(mask_list):
-    #         image = image.float()
-    #         torchvision.utils.save_image(image, os.path.join(masks_path, '{0:05d}'.format(count) + ".png"))
-    #         count +=1
-    
+
     count = 0
     print("writing rendered depth images.")
     if len(render_depths) != 0:
