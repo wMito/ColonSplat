@@ -1,11 +1,9 @@
-# ColonSplat: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting 
-Proof-of-Concept Code 
+# ColonSplat: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting  
 
 ## Environment
 
 1. Install the Python environment
 Please note we use gaussian rasterizer from https://github.com/HKUST-SAIL/RaDe-GS.  
-Installation steps were not thouroughly tested yet!  
 Commands below should work, however if any module is missing - please install it additionally.
 ```bash
 conda create -n env python=3.9 
@@ -20,7 +18,9 @@ pip install --no-build-isolation submodules/simple-knn
 
 ## To run training, testing and visualisation simply run:
 ```bash
+# Train on C3VD
 bash run.sh
+# Train on DynamicColon
 bash run_custom_ds.sh
 ```
 
