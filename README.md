@@ -1,5 +1,12 @@
 # ColonSplat: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting  
 
+## Clone repository
+
+```bash
+git clone --recursive https://github.com/wMito/ColonSplat.git
+cd ColonSplat
+```
+
 ## Environment
 
 Install conda environment. Please note we use gaussian rasterizer from https://github.com/HKUST-SAIL/RaDe-GS.  
