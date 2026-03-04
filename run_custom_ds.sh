@@ -59,7 +59,7 @@ do
         python render_custom_lookat_cameras.py \
             --model_path output/$exp_name 
 
-        # ---- TIME SHIFT ----
+        # ---- TEST GEOMETRY ----
         python test_geometry.py \
             -s $data_path \
             --model_path output/$exp_name \
