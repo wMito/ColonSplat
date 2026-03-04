@@ -2,9 +2,7 @@
 
 ## Environment
 
-Install conda environment.  
-
-Please note we use gaussian rasterizer from https://github.com/HKUST-SAIL/RaDe-GS.  
+Install conda environment. Please note we use gaussian rasterizer from https://github.com/HKUST-SAIL/RaDe-GS.  
 
 ```bash
 conda create -n env python=3.9 
@@ -43,7 +41,7 @@ We thank the authors of publicly available repositories:
 - [Endo-4DGS](https://github.com/lastbasket/Endo-4DGS)
 - [Deform3DGS](https://github.com/jinlab-imvr/Deform3DGS)
 - [RADE-GS](https://github.com/HKUST-SAIL/RaDe-GS)
-- [C3VDv2](https://durrlab.github.io/C3VDv2/) - we used C3VDvs meshes to create DynamicColon.
+- [C3VDv2](https://durrlab.github.io/C3VDv2/) - we used C3VDv2 meshes to create DynamicColon.
 
 
 ## Implementation notes on fair comparison with baselines
