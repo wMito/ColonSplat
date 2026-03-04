@@ -2,11 +2,10 @@
 
 ## Environment
 
-1. Install the Python environment.  
+Install conda environment.  
 
 Please note we use gaussian rasterizer from https://github.com/HKUST-SAIL/RaDe-GS.  
 
-Commands below should work, however if any module is missing - please install it additionally.
 ```bash
 conda create -n env python=3.9 
 conda activate env
