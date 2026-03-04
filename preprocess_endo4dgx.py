@@ -1,6 +1,7 @@
 # ============================================================
 # Endo-4DGX preprocessing using DUAL illumination estimation
 # Reference: Zhang et al. 2019 (DUAL) — used as D(I)
+# We use this script ONLY to test endo-4dgx baseline.
 # ============================================================
 
 import os
@@ -175,5 +176,5 @@ DATASETS=[
 
 for folder in DATASETS:
     stats = preprocess_sequence(
-            f"/home/jk/colon_dynamic/data/coloncrafter/{folder}/color"
+            f"/data/coloncrafter/{folder}/color"
         )

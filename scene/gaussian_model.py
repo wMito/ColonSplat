@@ -60,7 +60,7 @@ class GaussianModel:
         self._deformation = deform_network(args)
         self.deformation_perc = args.deformation_perc
 
-        self._deformation_table = torch.empty(0)
+        self._deformation_table = torch.empty(0) #stores color embeddings per gaussian
         # self._features_dc = torch.empty(0)
         # self._features_rest = torch.empty(0)
         self.features = torch.empty(0)

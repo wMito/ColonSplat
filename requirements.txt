@@ -13,4 +13,6 @@ tqdm
 torchmetrics
 imageio
 fpsample
-cuvs
+plyfile
+imageio[ffmpeg]
+tensorboard

@@ -22,11 +22,7 @@ from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args, ModelHiddenParams, OptimizationParams
 from scene import GaussianModel
 from time import time
-import open3d as o3d
-from utils.graphics_utils import fov2focal
-import json
 from utils.lookat_utils import generateLookAtCams
-import cv2
 
 to8b = lambda x : (255*np.clip(x.cpu().numpy(),0,1)).astype(np.uint8)
 

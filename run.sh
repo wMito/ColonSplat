@@ -15,12 +15,12 @@ COL_SMOOTH_W=0.0001
 DATASETS=(
     c1_ascending_t4_v4
     c1_cecum_t1_v4
-    # c1_descending_t4_v4
-    # c1_sigmoid1_t4_v4
-    # c1_sigmoid2_t4_v4
-    # c1_transverse1_t1_v4
-    # c1_transverse1_t4_v4
-    # c2_cecum_t1_v4
+    c1_descending_t4_v4
+    c1_sigmoid1_t4_v4
+    c1_sigmoid2_t4_v4
+    c1_transverse1_t1_v4
+    c1_transverse1_t4_v4
+    c2_cecum_t1_v4
     c2_transverse1_t1_v4
 )
 
@@ -46,32 +46,27 @@ do
             --pruning_from_iter 500000 \
             --densify_from_iter_fine 500000 \
             --pruning_from_iter_fine 500000 \
-            --col_smooth_weight $COL_SMOOTH_W 
-            #--no_do  #--no_dr --no_ds 
+            --col_smooth_weight $COL_SMOOTH_W
 
         # ---- RENDER ----
         python render.py \
             -s $data_path \
             --model_path output/$exp_name \
-            --skip_video --skip_train --eval 
-            #--no_do  #--no_ds --no_dr 
+            --skip_video --skip_train --eval
 
-        # ---- METRICS ----
+        # ---- METRICS FOR EVERY N-TH TEST FRAME ----
         python metrics.py --model_path output/$exp_name
 
-        # ---- VISUALIZE ----
-        python render_visualize.py \
+        # ---- VISUALIZE LOOKAT CAMERAS ----
+        python render_lookat_cameras.py \
             -s $data_path \
             --model_path output/$exp_name \
-            --skip_video --skip_train --eval 
-            #--no_do #--no_dr --no_ds 
+            --skip_video --skip_train --eval
 
-        # ---- TIME SHIFT ----
+        # ---- CAMERA-TIMESTEP SHIFT ----
         python render_time_shift.py \
             -s $data_path \
             --model_path output/$exp_name \
-            --skip_video --skip_train --eval 
-            #--no_do  #--no_dr --no_ds 
-
+            --skip_video --skip_train --eval
     done
 done

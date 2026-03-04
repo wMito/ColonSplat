@@ -48,15 +48,15 @@ do
             --model_path output/$exp_name \
             --skip_video --skip_train --eval 
 
-        # ---- METRICS ----
+        # ---- METRICS FOR EVERY N-TH TEST FRAME ----
         python metrics.py --model_path output/$exp_name
 
-        # ---- VISUALIZE ----
-        python render_add_trajectory.py \
+        # ---- VISUALIZE CUSTOM TEST TRAJECTORY, METRICS FOR TEST TRAJECTORY ----
+        python render_custom_test_trajectory.py \
             --model_path output/$exp_name 
 
-        # ---- VISUALIZE CUSTOM TRAJECTORY ----
-        python render_lookat_cust.py \
+        # ---- VISUALIZE TEST LOOKAT CAMERAS ----
+        python render_custom_lookat_cameras.py \
             --model_path output/$exp_name 
 
         # ---- TIME SHIFT ----

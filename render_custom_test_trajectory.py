@@ -21,9 +21,6 @@ from utils.general_utils import safe_state
 from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args, ModelHiddenParams, OptimizationParams
 from scene import GaussianModel
-from time import time
-import glob
-import re
 import json
 from utils.image_utils import psnr, lpips_score
 from utils.loss_utils import ssim

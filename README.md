@@ -10,7 +10,12 @@ conda create -n env python=3.9
 conda activate env
 
 pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+
+python -m pip install "setuptools<81"
+pip install cuvs-cu12 --extra-index-url https://pypi.nvidia.com
+
 pip install -r requirements.txt
+
 pip install --no-build-isolation submodules/diff-gaussian-rasterization-radegs
 pip install --no-build-isolation submodules/simple-knn
 
@@ -18,7 +23,7 @@ pip install --no-build-isolation submodules/simple-knn
 
 ## To run training, testing and visualisation simply run:
 ```bash
-# Train on C3VD
+# Train on C3VDv2
 bash run.sh
 # Train on DynamicColon
 bash run_custom_ds.sh
