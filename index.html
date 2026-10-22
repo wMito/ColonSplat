@@ -229,6 +229,26 @@
       <video class="media" src="webpage/ablation.mp4" controls loop autoplay playsinline muted></video>
     </section>
 
+    <section class="card" id="endomapper">
+      <h2>EndoMapper - testing on real data</h2>
+      <p>
+        We used EndoMapper sequences with COLMAP reconstructions provided by the
+        <a href="https://www.synapse.org/Synapse:syn26707219/wiki/615178" target="_blank" rel="noopener noreferrer">EndoMapper dataset on Synapse</a>.
+        Please note that we used a more challenging split: 8 training frames followed by 4 testing frames.
+      </p>
+      <div class="video-grid">
+        <div>
+          <video class="media" src="webpage/endomapper/split_8-4_seq33_cluster7.mp4" aria-label="EndoMapper sequence 33, cluster 7" controls loop autoplay playsinline muted></video>
+        </div>
+        <div>
+          <video class="media" src="webpage/endomapper/split_8-4_seq34_cluster25.mp4" aria-label="EndoMapper sequence 34, cluster 25" controls loop autoplay playsinline muted></video>
+        </div>
+        <div>
+          <video class="media" src="webpage/endomapper/split_8-4_seq34_cluster33.mp4" aria-label="EndoMapper sequence 34, cluster 33" controls loop autoplay playsinline muted></video>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <h2>Acknowledgments</h2>
       <p>
@@ -260,5 +280,11 @@ For our DynamicColon dataset we used meshes provided by authors of C3VDv2 datase
 }</div>
     </section>
   </main>
+  <script>
+    document.querySelectorAll("#endomapper video").forEach((video) => {
+      video.defaultPlaybackRate = 0.5;
+      video.playbackRate = 0.5;
+    });
+  </script>
 </body>
 </html>
