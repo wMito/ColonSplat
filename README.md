@@ -1,4 +1,4 @@
-# ColonSplat: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting  
+# ColonSplat: Reconstruction of Peristaltic Motion in Colonoscopy with Dynamic Gaussian Splatting  (WACV2027)
 
 ## Clone repository
 
